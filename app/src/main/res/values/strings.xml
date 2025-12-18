@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- app/src/main/res/values/strings.xml -->
+<!-- English string resources (default) -->
+<resources>
+    <string name="app_name">MathGenius</string>
+
+    <!-- Home Screen -->
+    <string name="home_title">Multi-Function Calculator</string>
+    <string name="module_calculus">Calculus Calculator</string>
+    <string name="module_1">Module 1</string>
+    <string name="module_2">Module 2</string>
+    <string name="module_3">Module 3</string>
+    <string name="module_4">Module 4</string>
+    <string name="module_5">Module 5</string>
+    <string name="module_6">Module 6</string>
+    <string name="module_7">Module 7</string>
+    <string name="module_8">Module 8</string>
+    <string name="btn_exit">Exit</string>
+    <string name="btn_settings">Settings</string>
+
+    <!-- Calculus Screen -->
+    <string name="calculus_title">Calculus Calculator</string>
+    <string name="display_hint">Enter expression</string>
+    <string name="btn_derivative">Derivative d/dx</string>
+    <string name="btn_integral">Integral ∫</string>
+    <string name="btn_clear">Clear</string>
+    <string name="btn_backspace">Backspace</string>
+    <string name="btn_show_steps">Show Steps</string>
+
+    <!-- Keyboard Buttons -->
+    <string name="key_sin">sin</string>
+    <string name="key_cos">cos</string>
+    <string name="key_tan">tan</string>
+    <string name="key_ln">ln</string>
+    <string name="key_log">log</string>
+    <string name="key_sqrt">√</string>
+    <string name="key_power">x^n</string>
+    <string name="key_abs">|x|</string>
+    <string name="key_pi">π</string>
+    <string name="key_e">e</string>
+    <string name="key_x">x</string>
+
+    <!-- Settings Screen -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_language">Language Selection</string>
+    <string name="language_chinese">中文</string>
+    <string name="language_english">English</string>
+    <string name="language_japanese">日本語</string>
+    <string name="btn_save">Save</string>
+
+    <!-- Common -->
+    <string name="cancel">Cancel</string>
+    <string name="confirm">Confirm</string>
+    <string name="exit_confirm">Are you sure you want to exit?</string>
+</resources>

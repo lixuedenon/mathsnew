@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- app/src/main/res/drawable/display_border.xml -->
+<!-- 显示区域边框drawable -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+
+    <solid android:color="@color/display_background" />
+
+    <stroke
+        android:width="2dp"
+        android:color="@color/display_border" />
+
+    <corners android:radius="8dp" />
+
+    <padding
+        android:left="12dp"
+        android:top="12dp"
+        android:right="12dp"
+        android:bottom="12dp" />
+
+</shape>

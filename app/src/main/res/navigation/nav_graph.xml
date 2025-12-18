@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- app/src/main/res/navigation/nav_graph.xml -->
+<!-- Navigation导航图配置 -->
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/nav_graph"
+    app:startDestination="@id/homeFragment">
+
+    <fragment
+        android:id="@+id/homeFragment"
+        android:name="com.mathsnew.mathsnew.HomeFragment"
+        android:label="@string/home_title">
+        <action
+            android:id="@+id/action_home_to_calculus"
+            app:destination="@id/calculusFragment"
+            app:enterAnim="@android:anim/slide_in_left"
+            app:exitAnim="@android:anim/slide_out_right"
+            app:popEnterAnim="@android:anim/slide_in_left"
+            app:popExitAnim="@android:anim/slide_out_right" />
+        <action
+            android:id="@+id/action_home_to_settings"
+            app:destination="@id/settingsFragment"
+            app:enterAnim="@android:anim/fade_in"
+            app:exitAnim="@android:anim/fade_out"
+            app:popEnterAnim="@android:anim/fade_in"
+            app:popExitAnim="@android:anim/fade_out" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/calculusFragment"
+        android:name="com.mathsnew.mathsnew.CalculusFragment"
+        android:label="@string/calculus_title" />
+
+    <fragment
+        android:id="@+id/settingsFragment"
+        android:name="com.mathsnew.mathsnew.SettingsFragment"
+        android:label="@string/settings_title" />
+
+</navigation>

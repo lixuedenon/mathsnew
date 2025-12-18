@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- app/src/main/res/values-zh/strings.xml -->
+<!-- 中文字符串资源 -->
+<resources>
+    <string name="app_name">数学天才</string>
+
+    <!-- 首页 -->
+    <string name="home_title">多功能计算器</string>
+    <string name="module_calculus">微积分计算器</string>
+    <string name="module_1">模块 1</string>
+    <string name="module_2">模块 2</string>
+    <string name="module_3">模块 3</string>
+    <string name="module_4">模块 4</string>
+    <string name="module_5">模块 5</string>
+    <string name="module_6">模块 6</string>
+    <string name="module_7">模块 7</string>
+    <string name="module_8">模块 8</string>
+    <string name="btn_exit">退出</string>
+    <string name="btn_settings">设置</string>
+
+    <!-- 微积分页面 -->
+    <string name="calculus_title">微积分计算器</string>
+    <string name="display_hint">请输入表达式</string>
+    <string name="btn_derivative">微分计算 d/dx</string>
+    <string name="btn_integral">积分计算 ∫</string>
+    <string name="btn_clear">清除</string>
+    <string name="btn_backspace">退格</string>
+    <string name="btn_show_steps">显示步骤</string>
+
+    <!-- 键盘按钮 -->
+    <string name="key_sin">sin</string>
+    <string name="key_cos">cos</string>
+    <string name="key_tan">tan</string>
+    <string name="key_ln">ln</string>
+    <string name="key_log">log</string>
+    <string name="key_sqrt">√</string>
+    <string name="key_power">x^n</string>
+    <string name="key_abs">|x|</string>
+    <string name="key_pi">π</string>
+    <string name="key_e">e</string>
+    <string name="key_x">x</string>
+
+    <!-- 设置页面 -->
+    <string name="settings_title">设置</string>
+    <string name="settings_language">语言选择</string>
+    <string name="language_chinese">中文</string>
+    <string name="language_english">English</string>
+    <string name="language_japanese">日本語</string>
+    <string name="btn_save">保存</string>
+
+    <!-- 通用 -->
+    <string name="cancel">取消</string>
+    <string name="confirm">确认</string>
+    <string name="exit_confirm">确定要退出应用吗？</string>
+</resources>

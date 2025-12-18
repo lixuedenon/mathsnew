@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- app/src/main/res/values/colors.xml -->
+<!-- 颜色资源定义 -->
+<resources>
+    <!-- 主题颜色 -->
+    <color name="primary">#6200EE</color>
+    <color name="primary_dark">#3700B3</color>
+    <color name="accent">#03DAC5</color>
+
+    <!-- 背景颜色 -->
+    <color name="background">#FFFFFF</color>
+    <color name="background_dark">#121212</color>
+
+    <!-- 文字颜色 -->
+    <color name="text_primary">#000000</color>
+    <color name="text_secondary">#757575</color>
+    <color name="text_white">#FFFFFF</color>
+
+    <!-- 键盘按钮颜色 -->
+    <color name="key_number">#E3F2FD</color>
+    <color name="key_number_pressed">#BBDEFB</color>
+    <color name="key_number_text">#1976D2</color>
+
+    <color name="key_function">#FFF3E0</color>
+    <color name="key_function_pressed">#FFE0B2</color>
+    <color name="key_function_text">#F57C00</color>
+
+    <color name="key_operation">#F3E5F5</color>
+    <color name="key_operation_pressed">#E1BEE7</color>
+    <color name="key_operation_text">#7B1FA2</color>
+
+    <color name="key_calculate">#E8F5E9</color>
+    <color name="key_calculate_pressed">#C8E6C9</color>
+    <color name="key_calculate_text">#388E3C</color>
+
+    <!-- 显示区域颜色 -->
+    <color name="display_background">#FAFAFA</color>
+    <color name="display_border">#E0E0E0</color>
+
+    <!-- 模块按钮颜色 -->
+    <color name="module_background">#F5F5F5</color>
+    <color name="module_border">#BDBDBD</color>
+</resources>
