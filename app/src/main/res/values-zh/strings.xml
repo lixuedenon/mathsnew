@@ -52,4 +52,5 @@
     <string name="cancel">取消</string>
     <string name="confirm">确认</string>
     <string name="exit_confirm">确定要退出应用吗？</string>
+    <string name="btn_back">返回</string>
 </resources>

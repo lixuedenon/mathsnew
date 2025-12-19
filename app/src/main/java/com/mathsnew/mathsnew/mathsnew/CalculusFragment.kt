@@ -9,6 +9,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.fragment.app.Fragment
+import androidx.navigation.fragment.findNavController
 import com.mathsnew.mathsnew.databinding.FragmentCalculusBinding
 
 class CalculusFragment : Fragment() {
@@ -17,6 +18,8 @@ class CalculusFragment : Fragment() {
     private val binding get() = _binding!!
 
     private var currentExpression = ""
+
+    private val calculusEngine = CalculusEngine()
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -29,8 +32,18 @@ class CalculusFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        setupBackButton()
         setupKeyboardListeners()
         setupFunctionButtons()
+    }
+
+    /**
+     * 设置返回按钮
+     */
+    private fun setupBackButton() {
+        binding.btnBack.setOnClickListener {
+            findNavController().navigateUp()
+        }
     }
 
     private fun setupKeyboardListeners() {
@@ -111,24 +124,42 @@ class CalculusFragment : Fragment() {
         }
     }
 
+    /**
+     * 计算微分
+     */
     private fun calculateDerivative() {
         if (currentExpression.isEmpty()) {
             Toast.makeText(requireContext(), "请先输入表达式", Toast.LENGTH_SHORT).show()
             return
         }
 
-        val result = "d/dx[$currentExpression] = (待实现)"
-        appendResultToDisplay(result)
+        when (val result = calculusEngine.calculateDerivative(currentExpression)) {
+            is CalculationResult.Success -> {
+                appendResultToDisplay("d/dx = ${result.result}")
+            }
+            is CalculationResult.Error -> {
+                Toast.makeText(requireContext(), result.message, Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
+    /**
+     * 计算积分
+     */
     private fun calculateIntegral() {
         if (currentExpression.isEmpty()) {
             Toast.makeText(requireContext(), "请先输入表达式", Toast.LENGTH_SHORT).show()
             return
         }
 
-        val result = "∫($currentExpression)dx = (待实现)"
-        appendResultToDisplay(result)
+        when (val result = calculusEngine.calculateIntegral(currentExpression)) {
+            is CalculationResult.Success -> {
+                appendResultToDisplay("∫dx = ${result.result}")
+            }
+            is CalculationResult.Error -> {
+                Toast.makeText(requireContext(), result.message, Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     private fun showCalculationSteps() {
@@ -136,7 +167,7 @@ class CalculusFragment : Fragment() {
     }
 
     private fun appendResultToDisplay(result: String) {
-        currentExpression += "\n= $result"
+        currentExpression += "\n$result"
         updateDisplay()
     }
 

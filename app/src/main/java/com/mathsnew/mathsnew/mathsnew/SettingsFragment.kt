@@ -11,6 +11,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.fragment.app.Fragment
+import androidx.navigation.fragment.findNavController
 import com.mathsnew.mathsnew.databinding.FragmentSettingsBinding
 import java.util.Locale
 
@@ -33,8 +34,18 @@ class SettingsFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        setupBackButton()
         loadSavedLanguage()
         setupListeners()
+    }
+
+    /**
+     * 设置返回按钮
+     */
+    private fun setupBackButton() {
+        binding.btnBack.setOnClickListener {
+            findNavController().navigateUp()
+        }
     }
 
     /**

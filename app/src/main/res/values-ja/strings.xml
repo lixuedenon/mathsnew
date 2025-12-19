@@ -52,4 +52,5 @@
     <string name="cancel">キャンセル</string>
     <string name="confirm">確認</string>
     <string name="exit_confirm">アプリを終了しますか？</string>
+    <string name="btn_back">戻る</string>
 </resources>
