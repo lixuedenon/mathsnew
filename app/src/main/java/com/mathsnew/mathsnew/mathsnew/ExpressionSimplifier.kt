@@ -1,30 +1,28 @@
 // app/src/main/java/com/mathsnew/mathsnew/ExpressionSimplifier.kt
-// 表达式简化器（深度简化）
+// 表达式简化器 - 深度优化版本，支持系数提前和排序
 
 package com.mathsnew.mathsnew
 
 /**
- * 表达式简化器
- * 将复杂的微分结果简化为最简形式
+ * 表达式简化器（深度优化版）
  *
- * 简化规则分类：
- * 1. 基础代数简化（20个规则）
- * 2. 常数合并
- * 3. 同类项合并
- * 4. 指数合并
+ * 功能：
+ * 1. 基础代数简化（0+x=x, 1×x=x等）
+ * 2. 常数合并（2×3=6）
+ * 3. 同类项合并（2x+3x=5x）
+ * 4. 系数提前（cos(x²)×2×x → 2×x×cos(x²)）
+ * 5. 常数连乘合并（2×3×x → 6×x）
+ * 6. 乘法项排序（常数→变量→函数）
  *
- * 测试示例：
- * - simplify(1*x) → x
- * - simplify(x^1) → x
- * - simplify(0+x) → x
- * - simplify(2*3*x) → 6*x
- * - simplify(x*x*x) → x^3
- * - simplify(0*sin(x)+3*1) → 3
+ * 采用多轮迭代简化策略，最多10轮
  */
 class ExpressionSimplifier {
 
     /**
-     * 简化表达式（多轮简化直到不能再简化）
+     * 简化表达式（多轮迭代直到不能再简化）
+     *
+     * @param node 要简化的AST节点
+     * @return 简化后的AST节点
      */
     fun simplify(node: MathNode): MathNode {
         var current = node
@@ -46,38 +44,35 @@ class ExpressionSimplifier {
 
     /**
      * 单轮简化
+     *
+     * @param node 要简化的AST节点
+     * @return 简化后的AST节点
      */
     private fun simplifyOnce(node: MathNode): MathNode {
         return when (node) {
             is MathNode.Number -> node
             is MathNode.Variable -> node
-            is MathNode.Function -> simplifyFunction(node)
-            is MathNode.BinaryOp -> simplifyBinaryOp(node)
-        }
-    }
 
-    /**
-     * 简化函数节点
-     */
-    private fun simplifyFunction(node: MathNode.Function): MathNode {
-        val simplifiedArg = simplifyOnce(node.argument)
-        return MathNode.Function(node.name, simplifiedArg)
-    }
+            is MathNode.BinaryOp -> {
+                // 递归简化左右子节点
+                val left = simplifyOnce(node.left)
+                val right = simplifyOnce(node.right)
 
-    /**
-     * 简化二元运算节点
-     */
-    private fun simplifyBinaryOp(node: MathNode.BinaryOp): MathNode {
-        // 先递归简化左右子树
-        val left = simplifyOnce(node.left)
-        val right = simplifyOnce(node.right)
+                // 根据运算符类型进行简化
+                when (node.operator) {
+                    Operator.ADD -> simplifyAddition(left, right)
+                    Operator.SUBTRACT -> simplifySubtraction(left, right)
+                    Operator.MULTIPLY -> simplifyMultiplication(left, right)
+                    Operator.DIVIDE -> simplifyDivision(left, right)
+                    Operator.POWER -> simplifyPower(left, right)
+                }
+            }
 
-        return when (node.operator) {
-            Operator.ADD -> simplifyAddition(left, right)
-            Operator.SUBTRACT -> simplifySubtraction(left, right)
-            Operator.MULTIPLY -> simplifyMultiplication(left, right)
-            Operator.DIVIDE -> simplifyDivision(left, right)
-            Operator.POWER -> simplifyPower(left, right)
+            is MathNode.Function -> {
+                // 递归简化函数参数
+                val simplifiedArg = simplifyOnce(node.argument)
+                MathNode.Function(node.name, simplifiedArg)
+            }
         }
     }
 
@@ -95,7 +90,7 @@ class ExpressionSimplifier {
             return left
         }
 
-        // 规则3: 常数相加 (5 + 3 = 8)
+        // 规则3: 常数相加
         if (left is MathNode.Number && right is MathNode.Number) {
             return MathNode.Number(left.value + right.value)
         }
@@ -125,85 +120,208 @@ class ExpressionSimplifier {
             )
         }
 
-        // 规则3: 常数相减 (5 - 3 = 2)
+        // 规则3: x - x = 0
+        if (left.toString() == right.toString()) {
+            return MathNode.Number(0.0)
+        }
+
+        // 规则4: 常数相减
         if (left is MathNode.Number && right is MathNode.Number) {
             return MathNode.Number(left.value - right.value)
         }
 
-        // 规则4: x - x = 0
-        if (left.toString() == right.toString()) {
-            return MathNode.Number(0.0)
-        }
+        // 规则5: 同类项合并
+        val combined = combineLikeTerms(left, right, Operator.SUBTRACT)
+        if (combined != null) return combined
 
         return MathNode.BinaryOp(Operator.SUBTRACT, left, right)
     }
 
     /**
-     * 简化乘法（核心：处理大部分复杂情况）
+     * 简化乘法（深度优化版）
+     *
+     * 新增功能：
+     * 1. 系数提前
+     * 2. 常数连乘合并
+     * 3. 乘法项排序（常数→变量→函数）
      */
     private fun simplifyMultiplication(left: MathNode, right: MathNode): MathNode {
-        // 规则1: 0 * x = 0
+        // 规则1: 0 × x = 0
         if ((left is MathNode.Number && left.value == 0.0) ||
             (right is MathNode.Number && right.value == 0.0)) {
             return MathNode.Number(0.0)
         }
 
-        // 规则2: 1 * x = x
+        // 规则2: 1 × x = x
         if (left is MathNode.Number && left.value == 1.0) {
             return right
         }
 
-        // 规则3: x * 1 = x
+        // 规则3: x × 1 = x
         if (right is MathNode.Number && right.value == 1.0) {
             return left
         }
 
-        // 规则4: -1 * x = -x (保持)
-        if (left is MathNode.Number && left.value == -1.0) {
-            return MathNode.BinaryOp(Operator.MULTIPLY, left, right)
-        }
-
-        // 规则5: 常数相乘 (2 * 3 = 6)
+        // 规则4: 常数相乘
         if (left is MathNode.Number && right is MathNode.Number) {
             return MathNode.Number(left.value * right.value)
         }
 
-        // 规则6: 提取常数相乘 (2 * (3 * x) = 6 * x)
-        if (left is MathNode.Number && right is MathNode.BinaryOp &&
-            right.operator == Operator.MULTIPLY && right.left is MathNode.Number) {
-            val newCoeff = left.value * right.left.value
-            return simplifyMultiplication(MathNode.Number(newCoeff), right.right)
-        }
+        // 规则5: 提取并合并常数（深度优化）
+        // 2 × (3 × x) → 6 × x
+        // cos(x) × 2 × x → 2 × x × cos(x)
+        val optimized = extractAndCombineConstants(left, right)
+        if (optimized != null) return optimized
 
-        // 规则7: 提取常数相乘 ((2 * x) * 3 = 6 * x)
-        if (right is MathNode.Number && left is MathNode.BinaryOp &&
-            left.operator == Operator.MULTIPLY && left.left is MathNode.Number) {
-            val newCoeff = left.left.value * right.value
-            return simplifyMultiplication(MathNode.Number(newCoeff), left.right)
-        }
-
-        // 规则8: 同底数相乘 (x * x = x^2, x^2 * x = x^3)
+        // 规则6: 同底数幂相乘 (x × x = x^2, x^2 × x^3 = x^5)
         val powerResult = multiplyPowers(left, right)
         if (powerResult != null) return powerResult
 
-        // 规则9: 常数与多项式相乘 (2 * (x + y) = 2*x + 2*y)
-        if (left is MathNode.Number && right is MathNode.BinaryOp &&
-            (right.operator == Operator.ADD || right.operator == Operator.SUBTRACT)) {
-            return MathNode.BinaryOp(
-                right.operator,
-                simplifyMultiplication(left, right.left),
-                simplifyMultiplication(left, right.right)
-            )
-        }
+        // 规则7: 乘法项排序（常数→变量→函数）
+        val sorted = sortMultiplicationTerms(left, right)
+        if (sorted != null) return sorted
 
         return MathNode.BinaryOp(Operator.MULTIPLY, left, right)
+    }
+
+    /**
+     * 提取并合并常数
+     *
+     * 处理以下情况：
+     * 1. 2 × (3 × x) → 6 × x
+     * 2. (2 × x) × 3 → 6 × x
+     * 3. cos(x) × 2 → 2 × cos(x)（系数提前）
+     */
+    private fun extractAndCombineConstants(left: MathNode, right: MathNode): MathNode? {
+        val leftCoeff = extractConstant(left)
+        val rightCoeff = extractConstant(right)
+
+        // 如果至少有一个常数
+        if (leftCoeff != null || rightCoeff != null) {
+            val leftTerm = removeConstant(left)
+            val rightTerm = removeConstant(right)
+
+            val coeff1 = leftCoeff ?: 1.0
+            val coeff2 = rightCoeff ?: 1.0
+            val combinedCoeff = coeff1 * coeff2
+
+            // 构建结果
+            val term = when {
+                leftTerm != null && rightTerm != null ->
+                    MathNode.BinaryOp(Operator.MULTIPLY, leftTerm, rightTerm)
+                leftTerm != null -> leftTerm
+                rightTerm != null -> rightTerm
+                else -> null
+            }
+
+            return when {
+                combinedCoeff == 1.0 && term != null -> term
+                combinedCoeff == 0.0 -> MathNode.Number(0.0)
+                term != null -> MathNode.BinaryOp(
+                    Operator.MULTIPLY,
+                    MathNode.Number(combinedCoeff),
+                    term
+                )
+                else -> MathNode.Number(combinedCoeff)
+            }
+        }
+
+        return null
+    }
+
+    /**
+     * 从乘法表达式中提取常数
+     *
+     * @return 常数值，如果没有常数则返回null
+     */
+    private fun extractConstant(node: MathNode): Double? {
+        return when (node) {
+            is MathNode.Number -> node.value
+            is MathNode.BinaryOp -> {
+                if (node.operator == Operator.MULTIPLY) {
+                    if (node.left is MathNode.Number) {
+                        node.left.value
+                    } else if (node.right is MathNode.Number) {
+                        node.right.value
+                    } else {
+                        null
+                    }
+                } else {
+                    null
+                }
+            }
+            else -> null
+        }
+    }
+
+    /**
+     * 从乘法表达式中移除常数，返回剩余部分
+     *
+     * @return 移除常数后的表达式，如果表达式本身就是常数则返回null
+     */
+    private fun removeConstant(node: MathNode): MathNode? {
+        return when (node) {
+            is MathNode.Number -> null
+            is MathNode.BinaryOp -> {
+                if (node.operator == Operator.MULTIPLY) {
+                    when {
+                        node.left is MathNode.Number -> node.right
+                        node.right is MathNode.Number -> node.left
+                        else -> node
+                    }
+                } else {
+                    node
+                }
+            }
+            else -> node
+        }
+    }
+
+    /**
+     * 乘法项排序（常数→变量→函数）
+     *
+     * 例如：cos(x²) × x × 2 → 2 × x × cos(x²)
+     */
+    private fun sortMultiplicationTerms(left: MathNode, right: MathNode): MathNode? {
+        val leftPriority = getTermPriority(left)
+        val rightPriority = getTermPriority(right)
+
+        // 如果需要交换顺序
+        if (leftPriority > rightPriority) {
+            return MathNode.BinaryOp(Operator.MULTIPLY, right, left)
+        }
+
+        return null
+    }
+
+    /**
+     * 获取项的优先级（用于排序）
+     *
+     * @return 优先级数字（越小越靠前）
+     */
+    private fun getTermPriority(node: MathNode): Int {
+        return when (node) {
+            is MathNode.Number -> 1                    // 常数优先级最高（排最前）
+            is MathNode.Variable -> 2                  // 变量次之
+            is MathNode.Function -> 3                  // 函数最后
+            is MathNode.BinaryOp -> {
+                when (node.operator) {
+                    Operator.MULTIPLY -> {
+                        // 如果是乘法，取左右子节点优先级的最小值
+                        minOf(getTermPriority(node.left), getTermPriority(node.right))
+                    }
+                    Operator.POWER -> 2                // 幂运算视为变量优先级
+                    else -> 4                          // 其他运算优先级最低
+                }
+            }
+        }
     }
 
     /**
      * 简化除法
      */
     private fun simplifyDivision(left: MathNode, right: MathNode): MathNode {
-        // 规则1: 0 / x = 0 (x ≠ 0)
+        // 规则1: 0 / x = 0
         if (left is MathNode.Number && left.value == 0.0) {
             return MathNode.Number(0.0)
         }
@@ -213,14 +331,14 @@ class ExpressionSimplifier {
             return left
         }
 
-        // 规则3: 常数相除 (6 / 2 = 3)
-        if (left is MathNode.Number && right is MathNode.Number && right.value != 0.0) {
-            return MathNode.Number(left.value / right.value)
-        }
-
-        // 规则4: x / x = 1
+        // 规则3: x / x = 1
         if (left.toString() == right.toString()) {
             return MathNode.Number(1.0)
+        }
+
+        // 规则4: 常数相除
+        if (left is MathNode.Number && right is MathNode.Number) {
+            return MathNode.Number(left.value / right.value)
         }
 
         return MathNode.BinaryOp(Operator.DIVIDE, left, right)
@@ -240,34 +358,26 @@ class ExpressionSimplifier {
             return base
         }
 
-        // 规则3: 0^n = 0 (n > 0)
-        if (base is MathNode.Number && base.value == 0.0 &&
-            exponent is MathNode.Number && exponent.value > 0.0) {
+        // 规则3: 0^x = 0 (x ≠ 0)
+        if (base is MathNode.Number && base.value == 0.0) {
             return MathNode.Number(0.0)
         }
 
-        // 规则4: 1^n = 1
+        // 规则4: 1^x = 1
         if (base is MathNode.Number && base.value == 1.0) {
             return MathNode.Number(1.0)
         }
 
-        // 规则5: 常数的幂 (2^3 = 8)
+        // 规则5: 常数的幂
         if (base is MathNode.Number && exponent is MathNode.Number) {
             return MathNode.Number(Math.pow(base.value, exponent.value))
-        }
-
-        // 规则6: (x^m)^n = x^(m*n)
-        if (base is MathNode.BinaryOp && base.operator == Operator.POWER &&
-            base.right is MathNode.Number && exponent is MathNode.Number) {
-            val newExponent = base.right.value * exponent.value
-            return simplifyPower(base.left, MathNode.Number(newExponent))
         }
 
         return MathNode.BinaryOp(Operator.POWER, base, exponent)
     }
 
     /**
-     * 同底数幂相乘：x * x = x^2, x^2 * x = x^3, x^2 * x^3 = x^5
+     * 同底数幂相乘：x * x = x^2, x^2 * x^3 = x^5
      */
     private fun multiplyPowers(left: MathNode, right: MathNode): MathNode? {
         val leftBase = getBase(left)
@@ -293,6 +403,7 @@ class ExpressionSimplifier {
 
     /**
      * 获取表达式的底数
+     *
      * x → x, x^2 → x, 3*x → x, 3*x^2 → x
      */
     private fun getBase(node: MathNode): MathNode {
@@ -314,6 +425,7 @@ class ExpressionSimplifier {
 
     /**
      * 获取表达式的指数
+     *
      * x → 1, x^2 → 2, 3*x → 1, 3*x^2 → 2
      */
     private fun getExponent(node: MathNode): Double {
@@ -337,6 +449,7 @@ class ExpressionSimplifier {
 
     /**
      * 合并同类项
+     *
      * 2*x + 3*x = 5*x
      * x + 2*x = 3*x
      */
@@ -377,6 +490,7 @@ class ExpressionSimplifier {
 
     /**
      * 获取系数
+     *
      * 3*x → 3, x → 1, -2*x → -2
      */
     private fun getCoefficient(node: MathNode): Double {
@@ -398,6 +512,7 @@ class ExpressionSimplifier {
 
     /**
      * 获取项（去掉系数）
+     *
      * 3*x → x, x → x, 2*sin(x) → sin(x)
      */
     private fun getTerm(node: MathNode): MathNode {

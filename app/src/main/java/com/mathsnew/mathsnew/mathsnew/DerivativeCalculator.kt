@@ -26,18 +26,33 @@ class DerivativeCalculator {
      * 所有微分规则（按优先级排序）
      */
     private val rules: List<DerivativeRule> = listOf(
-        // 基础规则
+        // 基础规则（优先级 200-150）
         ConstantRule(),       // 优先级 200
         VariableRule(),       // 优先级 150
+
+        // 幂运算规则（优先级 100-95）
         PowerRule(),          // 优先级 100
+        GeneralPowerRule(),   // 优先级 95（处理 x^x 等情况）
+
+        // 四则运算规则（优先级 90-80）
         AdditionRule(),       // 优先级 90
         SubtractionRule(),    // 优先级 90
+        QuotientRule(),       // 优先级 85（商规则）
         ProductRule(),        // 优先级 80
 
-        // 三角函数规则
+        // 三角函数规则（优先级 70）
         SinRule(),            // 优先级 70
         CosRule(),            // 优先级 70
-        TanRule()             // 优先级 70
+        TanRule(),            // 优先级 70
+        CotRule(),            // 优先级 70
+        SecRule(),            // 优先级 70
+        CscRule(),            // 优先级 70
+
+        // 指数对数规则（优先级 65）
+        ExpRule(),            // 优先级 65
+        LnRule(),             // 优先级 65
+        LogRule(),            // 优先级 65
+        SqrtRule()            // 优先级 65
     ).sortedByDescending { it.priority }
 
     /**
