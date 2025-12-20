@@ -35,7 +35,7 @@ sealed class MathNode {
     }
 
     /**
-     * 二元运算节点：+, -, ×, ÷, ^
+     * 二元运算节点：+, -, ×, /, ^
      */
     data class BinaryOp(
         val operator: Operator,
@@ -77,7 +77,7 @@ enum class Operator(val symbol: String, val priority: Int) {
     ADD("+", 1),
     SUBTRACT("-", 1),
     MULTIPLY("×", 2),
-    DIVIDE("÷", 2),
+    DIVIDE("/", 2),
     POWER("^", 3);
 
     companion object {

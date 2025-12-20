@@ -488,13 +488,14 @@
                 android:layout_height="60dp"
                 android:layout_weight="1"
                 android:layout_margin="4dp"
-                android:text="@string/key_e"
-                android:textSize="20sp"
+                android:text="exp"
+                android:textSize="14sp"
+                android:textAllCaps="false"
                 android:padding="0dp"
                 android:minWidth="0dp"
                 android:minHeight="0dp"
-                android:textColor="@color/key_number_text"
-                android:backgroundTint="@color/key_number" />
+                android:textColor="@color/key_function_text"
+                android:backgroundTint="@color/key_function" />
 
         </LinearLayout>
 

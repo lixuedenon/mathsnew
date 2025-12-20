@@ -14,6 +14,7 @@ import android.text.style.SuperscriptSpan
  * 1. 将幂次转换为上标显示（x^2 → x²，移除^符号）
  * 2. 省略乘号（2×x → 2x, x×cos(x) → x·cos(x)）
  * 3. 负号优化（-1×sin(x) → -sin(x)）
+ * 4. 系数前置（exp(x)×2 → 2×exp(x)）
  *
  * 使用SpannableString实现任意指数的上标显示
  */
@@ -31,13 +32,16 @@ class MathFormatter {
         // 1. 处理负号优化：-1×f(x) → -f(x)
         text = optimizeNegativeOne(text)
 
-        // 2. 处理乘号省略：2×x → 2x, x×cos → x·cos
+        // 2. 系数前置：exp(x)×2 → 2×exp(x)
+        text = moveCoefficientToFront(text)
+
+        // 3. 处理乘号省略：2×x → 2x, x×cos → x·cos
         text = simplifyMultiplication(text)
 
-        // 3. 创建带上标的SpannableString（会移除^符号）
+        // 4. 创建带上标的SpannableString（会移除^符号）
         val spannableResult = createSpannableWithSuperscript(text)
 
-        // 4. 创建纯文本版本（用于内部计算，不含格式）
+        // 5. 创建纯文本版本（用于内部计算，不含格式）
         val plainText = text
 
         return FormattedResult(plainText, spannableResult)
@@ -64,6 +68,27 @@ class MathFormatter {
 
         // 处理中间的 --1×
         result = result.replace("--1×", "+")
+
+        return result
+    }
+
+    /**
+     * 系数前置：将函数后的系数移到前面
+     *
+     * 例如：exp(2×x)×2 → 2×exp(2×x)
+     *       sin(x)×3 → 3×sin(x)
+     */
+    private fun moveCoefficientToFront(text: String): String {
+        var result = text
+
+        // 正则表达式：匹配 函数(...)×数字 或 )×数字
+        val pattern = Regex("""((?:sin|cos|tan|cot|sec|csc|ln|log|exp|sqrt|abs)\([^)]+\)|[^×+\-/]+\))×(\d+(?:\.\d+)?)""")
+
+        result = pattern.replace(result) { matchResult ->
+            val funcPart = matchResult.groupValues[1]  // 函数部分
+            val coefficient = matchResult.groupValues[2]  // 系数
+            "$coefficient×$funcPart"  // 交换位置
+        }
 
         return result
     }
