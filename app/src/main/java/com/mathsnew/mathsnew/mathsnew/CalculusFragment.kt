@@ -85,6 +85,10 @@ class CalculusFragment : Fragment() {
         // 变量
         binding.btnX.setOnClickListener { appendToExpression("x") }
 
+        // 常数
+        binding.btnPi.setOnClickListener { appendToExpression("π") }
+        binding.btnE.setOnClickListener { appendToExpression("e") }
+
         // 小数点
         binding.btnDot.setOnClickListener { appendToExpression(".") }
 
@@ -101,6 +105,14 @@ class CalculusFragment : Fragment() {
         binding.btnSin.setOnClickListener { appendToExpression("sin(") }
         binding.btnCos.setOnClickListener { appendToExpression("cos(") }
         binding.btnTan.setOnClickListener { appendToExpression("tan(") }
+
+        // 对数函数
+        binding.btnLn.setOnClickListener { appendToExpression("ln(") }
+        binding.btnLog.setOnClickListener { appendToExpression("log(") }
+
+        // 其他函数
+        binding.btnSqrt.setOnClickListener { appendToExpression("sqrt(") }
+        binding.btnAbs.setOnClickListener { appendToExpression("abs(") }
 
         // 微分按钮
         binding.btnDerivative.setOnClickListener { calculateDerivative() }

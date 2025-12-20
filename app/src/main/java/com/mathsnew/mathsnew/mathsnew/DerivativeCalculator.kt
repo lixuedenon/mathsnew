@@ -52,7 +52,8 @@ class DerivativeCalculator {
         ExpRule(),            // 优先级 65
         LnRule(),             // 优先级 65
         LogRule(),            // 优先级 65
-        SqrtRule()            // 优先级 65
+        SqrtRule(),           // 优先级 65
+        AbsRule()             // 优先级 65（绝对值规则）
     ).sortedByDescending { it.priority }
 
     /**

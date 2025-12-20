@@ -54,7 +54,7 @@ class Tokenizer {
                     if (i < expression.length && expression[i] == '(') {
                         when (name) {
                             "sin", "cos", "tan", "cot", "sec", "csc",
-                            "ln", "log", "sqrt", "exp" -> {
+                            "ln", "log", "sqrt", "exp", "abs" -> {
                                 tokens.add(Token.Function(name))
                             }
                             else -> {

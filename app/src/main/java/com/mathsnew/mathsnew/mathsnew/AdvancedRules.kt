@@ -1,5 +1,5 @@
 // app/src/main/java/com/mathsnew/mathsnew/AdvancedRules.kt
-// 高级微分规则：商规则、指数规则、对数规则
+// 高级微分规则：商规则、指数规则、对数规则、绝对值规则
 
 package com.mathsnew.mathsnew
 
@@ -194,6 +194,49 @@ class SqrtRule : DerivativeRule {
             operator = Operator.DIVIDE,
             left = innerDerivative,
             right = denominator
+        )
+    }
+}
+
+/**
+ * 绝对值函数规则：d/dx[|u|] = (u/|u|) × u' = sign(u) × u'  (链式法则)
+ * 注：在 u = 0 处不可导
+ *
+ * 实现方式：
+ * d/dx[abs(u)] = (u / abs(u)) × u'
+ *
+ * 测试：
+ * - d/dx[abs(x)] = x/abs(x) = sign(x)
+ * - d/dx[abs(x²)] = (x²/abs(x²)) × 2x = 2x  (当 x ≠ 0)
+ * - d/dx[abs(sin(x))] = (sin(x)/abs(sin(x))) × cos(x)
+ */
+class AbsRule : DerivativeRule {
+    override val name = "绝对值规则"
+    override val priority = 65
+
+    override fun matches(node: MathNode, variable: String): Boolean {
+        return node is MathNode.Function && node.name == "abs"
+    }
+
+    override fun apply(node: MathNode, variable: String, calculator: DerivativeCalculator): MathNode {
+        val funcNode = node as MathNode.Function
+        val innerNode = funcNode.argument
+
+        // 符号函数：u / abs(u)
+        val signFunction = MathNode.BinaryOp(
+            operator = Operator.DIVIDE,
+            left = innerNode,
+            right = MathNode.Function("abs", innerNode)
+        )
+
+        // 内层导数：u'
+        val innerDerivative = calculator.differentiate(innerNode, variable)
+
+        // 链式法则：(u / abs(u)) × u'
+        return MathNode.BinaryOp(
+            operator = Operator.MULTIPLY,
+            left = signFunction,
+            right = innerDerivative
         )
     }
 }
