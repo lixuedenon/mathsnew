@@ -1,108 +1,194 @@
 // app/src/main/java/com/mathsnew/mathsnew/MathFormatter.kt
-// 数学表达式格式化器 - 将计算机格式转换为手写数学格式
+// 数学表达式格式化器（修复负数显示）
 
 package com.mathsnew.mathsnew
 
+import android.graphics.Color
 import android.text.SpannableString
+import android.text.style.ForegroundColorSpan
 import android.text.style.RelativeSizeSpan
 import android.text.style.SuperscriptSpan
+import android.util.Log
 
-/**
- * 数学表达式格式化器
- *
- * 功能：
- * 1. 将幂次转换为上标显示（x^2 → x²，移除^符号）
- * 2. 省略乘号（2×x → 2x, x×cos(x) → x·cos(x)）
- * 3. 负号优化（-1×sin(x) → -sin(x)）
- * 4. 系数前置（exp(x)×2 → 2×exp(x)）
- *
- * 使用SpannableString实现任意指数的上标显示
- */
+private enum class FormatterCharType {
+    NUMBER, VARIABLE, OPERATOR, FUNCTION, PAREN
+}
+
+private enum class FormatterTokenType {
+    NUMBER, VARIABLE, FUNCTION, LEFT_PAREN, RIGHT_PAREN, UNKNOWN
+}
+
+private data class FormatterCharInfo(
+    val char: Char,
+    val type: FormatterCharType,
+    val isSuperscript: Boolean = false
+)
+
 class MathFormatter {
 
-    /**
-     * 格式化数学表达式为显示格式
-     *
-     * @param expression 简化后的表达式字符串（如 "2×x×cos(x^2)"）
-     * @return FormattedResult 包含纯文本和SpannableString两种格式
-     */
+    companion object {
+        private val COLOR_FUNCTION = Color.parseColor("#2196F3")
+        private val COLOR_VARIABLE = Color.parseColor("#000000")
+        private val COLOR_NUMBER = Color.parseColor("#F44336")
+        private val COLOR_OPERATOR = Color.parseColor("#2E7D32")
+    }
+
     fun format(expression: String): FormattedResult {
+        Log.d("MathFormatter", "格式化输入: $expression")
+
         var text = expression
 
-        // 1. 处理负号优化：-1×f(x) → -f(x)
+        // 1. 处理 0-x 转换为 -x
+        text = simplifyNegation(text)
+        Log.d("MathFormatter", "负数简化后: $text")
+
+        // 2. 处理负号优化
         text = optimizeNegativeOne(text)
+        Log.d("MathFormatter", "负号优化后: $text")
 
-        // 2. 系数前置：exp(x)×2 → 2×exp(x)
-        text = moveCoefficientToFront(text)
+        // 3. 系数和变量合并前置
+        text = groupCoefficientsAndVariables(text)
+        Log.d("MathFormatter", "系数前置后: $text")
 
-        // 3. 处理乘号省略：2×x → 2x, x×cos → x·cos
+        // 4. 处理乘号省略
         text = simplifyMultiplication(text)
+        Log.d("MathFormatter", "乘号简化后: $text")
 
-        // 4. 创建带上标的SpannableString（会移除^符号）
-        val spannableResult = createSpannableWithSuperscript(text)
+        // 5. 创建带上标和语法高亮的SpannableString
+        val spannableResult = createFormattedSpannable(text)
 
-        // 5. 创建纯文本版本（用于内部计算，不含格式）
         val plainText = text
 
         return FormattedResult(plainText, spannableResult)
     }
 
     /**
-     * 优化负号：-1×sin(x) → -sin(x)
-     *
-     * 规则：
-     * - 表达式开头的 "-1×" 直接删除
-     * - 中间的 "+-1×" 替换为 "-"
-     * - 中间的 "--1×" 替换为 "+"
+     * 简化负数表示：(0-x) → -x
      */
-    private fun optimizeNegativeOne(text: String): String {
+    private fun simplifyNegation(text: String): String {
         var result = text
 
-        // 处理开头的 -1×
+        // (0-x) → -x
+        result = result.replace(Regex("""\(0-([^)]+)\)"""), "-$1")
+
+        // (0.0-x) → -x
+        result = result.replace(Regex("""\(0\.0-([^)]+)\)"""), "-$1")
+
+        return result
+    }
+
+    private fun optimizeNegativeOne(text: String): String {
+        var result = text
         if (result.startsWith("-1×")) {
             result = "-" + result.substring(3)
         }
-
-        // 处理中间的 +-1×
         result = result.replace("+-1×", "-")
-
-        // 处理中间的 --1×
         result = result.replace("--1×", "+")
-
         return result
     }
 
-    /**
-     * 系数前置：将函数后的系数移到前面
-     *
-     * 例如：exp(2×x)×2 → 2×exp(2×x)
-     *       sin(x)×3 → 3×sin(x)
-     */
-    private fun moveCoefficientToFront(text: String): String {
-        var result = text
+    private fun groupCoefficientsAndVariables(text: String): String {
+        val terms = splitByAddSubtract(text)
+        val rearrangedTerms = terms.map { term ->
+            rearrangeTerm(term.value, term.operator)
+        }
+        return rearrangedTerms.joinToString("")
+    }
 
-        // 正则表达式：匹配 函数(...)×数字 或 )×数字
-        val pattern = Regex("""((?:sin|cos|tan|cot|sec|csc|ln|log|exp|sqrt|abs)\([^)]+\)|[^×+\-/]+\))×(\d+(?:\.\d+)?)""")
+    private data class Term(val value: String, val operator: String)
 
-        result = pattern.replace(result) { matchResult ->
-            val funcPart = matchResult.groupValues[1]  // 函数部分
-            val coefficient = matchResult.groupValues[2]  // 系数
-            "$coefficient×$funcPart"  // 交换位置
+    private fun splitByAddSubtract(expression: String): List<Term> {
+        val terms = mutableListOf<Term>()
+        var currentTerm = StringBuilder()
+        var currentOperator = ""
+
+        var i = 0
+        var depth = 0
+
+        while (i < expression.length) {
+            when (expression[i]) {
+                '(' -> {
+                    depth++
+                    currentTerm.append(expression[i])
+                }
+                ')' -> {
+                    depth--
+                    currentTerm.append(expression[i])
+                }
+                '+', '-' -> {
+                    if (depth == 0) {
+                        val isNegativeSign = i == 0 || expression[i - 1] in "+-×/(^"
+
+                        if (isNegativeSign) {
+                            currentTerm.append(expression[i])
+                        } else {
+                            if (currentTerm.isNotEmpty()) {
+                                terms.add(Term(currentTerm.toString(), currentOperator))
+                                currentTerm = StringBuilder()
+                            }
+                            currentOperator = expression[i].toString()
+                        }
+                    } else {
+                        currentTerm.append(expression[i])
+                    }
+                }
+                else -> {
+                    currentTerm.append(expression[i])
+                }
+            }
+            i++
         }
 
-        return result
+        if (currentTerm.isNotEmpty()) {
+            terms.add(Term(currentTerm.toString(), currentOperator))
+        }
+
+        return terms
     }
 
-    /**
-     * 简化乘号
-     *
-     * 规则：
-     * - 数字×变量：2×x → 2x
-     * - 数字×函数：2×sin(x) → 2·sin(x)
-     * - 变量×变量：x×y → x·y
-     * - 变量×函数：x×cos(x) → x·cos(x)
-     * - 函数×函数：sin(x)×cos(x) → sin(x)·cos(x)
-     */
+    private fun rearrangeTerm(term: String, operator: String): String {
+        if (term.contains("/")) {
+            Log.d("MathFormatter", "项包含除法，不重排: $term")
+            return operator + term
+        }
+
+        val factors = term.split("×")
+
+        val coefficients = mutableListOf<String>()
+        val variables = mutableListOf<String>()
+        val functions = mutableListOf<String>()
+
+        for (factor in factors) {
+            if (factor.isEmpty()) continue
+
+            when {
+                factor.matches(Regex("-?\\d+(\\.\\d+)?")) -> {
+                    coefficients.add(factor)
+                }
+                factor.matches(Regex("[a-z](\\^\\d+)?")) -> {
+                    variables.add(factor)
+                }
+                else -> {
+                    functions.add(factor)
+                }
+            }
+        }
+
+        val result = StringBuilder()
+        result.append(operator)
+
+        val allFactors = coefficients + variables + functions
+
+        for (i in allFactors.indices) {
+            result.append(allFactors[i])
+            if (i < allFactors.size - 1) {
+                result.append("×")
+            }
+        }
+
+        return result.toString()
+    }
+
     private fun simplifyMultiplication(text: String): String {
         val result = StringBuilder()
         var i = 0
@@ -110,235 +196,195 @@ class MathFormatter {
         while (i < text.length) {
             val char = text[i]
 
-            // 查找乘号
             if (char == '×') {
-                // 获取乘号前后的字符
-                val before = if (i > 0) getTypeBeforeMultiply(text, i - 1) else TokenType.UNKNOWN
-                val after = if (i < text.length - 1) getTypeAfterMultiply(text, i + 1) else TokenType.UNKNOWN
+                val before = if (i > 0) getTypeBeforeMultiply(text, i - 1) else FormatterTokenType.UNKNOWN
+                val after = if (i < text.length - 1) getTypeAfterMultiply(text, i + 1) else FormatterTokenType.UNKNOWN
 
-                // 根据前后类型决定乘号的处理
                 when {
-                    // 数字×变量 或 数字×左括号（如 2×(x+1)）：省略乘号
-                    (before == TokenType.NUMBER && after == TokenType.VARIABLE) ||
-                    (before == TokenType.NUMBER && after == TokenType.LEFT_PAREN) -> {
-                        // 直接跳过乘号，不输出任何字符
+                    (before == FormatterTokenType.NUMBER && after == FormatterTokenType.VARIABLE) ||
+                    (before == FormatterTokenType.NUMBER && after == FormatterTokenType.LEFT_PAREN) ||
+                    (before == FormatterTokenType.VARIABLE && after == FormatterTokenType.VARIABLE) -> {
+                        Log.d("MathFormatter", "省略乘号: 位置 $i")
                     }
-
-                    // 其他情况：使用点号
                     else -> {
                         result.append('·')
+                        Log.d("MathFormatter", "保留乘号为点: 位置 $i")
                     }
                 }
             } else {
                 result.append(char)
             }
-
             i++
         }
 
         return result.toString()
     }
 
-    /**
-     * 判断乘号前面的类型
-     *
-     * @param text 完整文本
-     * @param index 乘号前一个字符的索引
-     * @return TokenType
-     */
-    private fun getTypeBeforeMultiply(text: String, index: Int): TokenType {
-        var i = index
+    private fun createFormattedSpannable(text: String): SpannableString {
+        Log.d("MathFormatter", "创建SpannableString: $text")
 
-        // 向前找到第一个非空白字符
-        while (i >= 0 && text[i].isWhitespace()) {
-            i--
-        }
-
-        if (i < 0) return TokenType.UNKNOWN
-
-        val char = text[i]
-
-        return when {
-            // 右括号
-            char == ')' -> TokenType.RIGHT_PAREN
-
-            // 数字
-            char.isDigit() -> TokenType.NUMBER
-
-            // 字母（变量）
-            char.isLetter() -> {
-                // 需要向前检查是否是函数结尾
-                // 如果前面有左括号，说明是函数；否则是变量
-                var j = i
-                while (j >= 0 && text[j].isLetter()) {
-                    j--
-                }
-                // 检查前面是否是右括号（函数调用的结束）
-                if (i > 0 && hasFunctionPattern(text, i)) {
-                    TokenType.FUNCTION
-                } else {
-                    TokenType.VARIABLE
-                }
-            }
-
-            else -> TokenType.UNKNOWN
-        }
-    }
-
-    /**
-     * 判断乘号后面的类型
-     *
-     * @param text 完整文本
-     * @param index 乘号后一个字符的索引
-     * @return TokenType
-     */
-    private fun getTypeAfterMultiply(text: String, index: Int): TokenType {
-        var i = index
-
-        // 跳过空白字符
-        while (i < text.length && text[i].isWhitespace()) {
-            i++
-        }
-
-        if (i >= text.length) return TokenType.UNKNOWN
-
-        val char = text[i]
-
-        return when {
-            // 左括号
-            char == '(' -> TokenType.LEFT_PAREN
-
-            // 数字
-            char.isDigit() -> TokenType.NUMBER
-
-            // 字母（可能是变量或函数）
-            char.isLetter() -> {
-                // 向后查找，如果后面跟着左括号，说明是函数
-                var j = i
-                while (j < text.length && text[j].isLetter()) {
-                    j++
-                }
-                if (j < text.length && text[j] == '(') {
-                    TokenType.FUNCTION
-                } else {
-                    TokenType.VARIABLE
-                }
-            }
-
-            else -> TokenType.UNKNOWN
-        }
-    }
-
-    /**
-     * 检查是否是函数模式（函数名后跟括号）
-     */
-    private fun hasFunctionPattern(text: String, index: Int): Boolean {
-        // 向前找到函数名的开始
-        var start = index
-        while (start >= 0 && text[start].isLetter()) {
-            start--
-        }
-        start++
-
-        // 向后找到函数名的结束
-        var end = index
-        while (end < text.length && text[end].isLetter()) {
-            end++
-        }
-
-        // 检查函数名后面是否有左括号
-        return end < text.length && text[end] == '('
-    }
-
-    /**
-     * 创建带上标的SpannableString
-     *
-     * 将 x^2 转换为 x² 的显示效果（移除^符号）
-     * 使用SuperscriptSpan和RelativeSizeSpan实现上标
-     */
-    private fun createSpannableWithSuperscript(text: String): SpannableString {
-        // 第一步：移除所有^符号，并记录指数位置
-        val cleanedText = StringBuilder()
-        val superscriptRanges = mutableListOf<Pair<Int, Int>>()
-
+        val charInfoList = mutableListOf<FormatterCharInfo>()
         var i = 0
+
         while (i < text.length) {
-            if (text[i] == '^') {
-                // 找到^符号，跳过它
-                i++
+            val char = text[i]
 
-                // 记录指数的开始位置（在cleanedText中的位置）
-                val exponentStart = cleanedText.length
+            when {
+                char == '^' -> {
+                    i++
+                    if (i < text.length && text[i] == '-') {
+                        charInfoList.add(FormatterCharInfo(text[i], FormatterCharType.OPERATOR, true))
+                        i++
+                    }
+                    while (i < text.length && (text[i].isDigit() || text[i] == '.')) {
+                        charInfoList.add(FormatterCharInfo(text[i], FormatterCharType.NUMBER, true))
+                        i++
+                    }
+                }
 
-                // 跳过可能的负号
-                if (i < text.length && text[i] == '-') {
-                    cleanedText.append(text[i])
+                char.isDigit() || char == '.' -> {
+                    charInfoList.add(FormatterCharInfo(char, FormatterCharType.NUMBER))
                     i++
                 }
 
-                // 读取指数（数字和小数点）
-                while (i < text.length && (text[i].isDigit() || text[i] == '.')) {
-                    cleanedText.append(text[i])
+                char.isLetter() -> {
+                    val nameBuilder = StringBuilder()
+                    while (i < text.length && text[i].isLetter()) {
+                        nameBuilder.append(text[i])
+                        i++
+                    }
+                    val name = nameBuilder.toString()
+
+                    val isFunctionName = name in listOf("sin", "cos", "tan", "cot", "sec", "csc",
+                                                        "ln", "log", "sqrt", "exp", "abs")
+                    val type = if (isFunctionName) FormatterCharType.FUNCTION else FormatterCharType.VARIABLE
+
+                    for (c in name) {
+                        charInfoList.add(FormatterCharInfo(c, type))
+                    }
+                }
+
+                char in "+-×/÷·" -> {
+                    charInfoList.add(FormatterCharInfo(char, FormatterCharType.OPERATOR))
                     i++
                 }
 
-                // 记录指数的结束位置
-                val exponentEnd = cleanedText.length
-
-                // 保存这个范围
-                if (exponentEnd > exponentStart) {
-                    superscriptRanges.add(Pair(exponentStart, exponentEnd))
+                char in "()" -> {
+                    charInfoList.add(FormatterCharInfo(char, FormatterCharType.PAREN))
+                    i++
                 }
-            } else {
-                // 普通字符，直接添加
-                cleanedText.append(text[i])
-                i++
+
+                char == 'π' || char == 'e' -> {
+                    charInfoList.add(FormatterCharInfo(char, FormatterCharType.NUMBER))
+                    i++
+                }
+
+                else -> {
+                    i++
+                }
             }
         }
 
-        // 第二步：创建SpannableString并应用上标效果
-        val spannableString = SpannableString(cleanedText.toString())
+        val displayText = charInfoList.map { it.char }.joinToString("")
+        Log.d("MathFormatter", "最终显示文本: $displayText")
 
-        for ((start, end) in superscriptRanges) {
-            // SuperscriptSpan: 将文字提升到上标位置
+        val spannableString = SpannableString(displayText)
+
+        var currentPos = 0
+        for (info in charInfoList) {
+            val start = currentPos
+            val end = currentPos + 1
+
+            if (info.isSuperscript) {
+                spannableString.setSpan(
+                    SuperscriptSpan(),
+                    start,
+                    end,
+                    SpannableString.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+                spannableString.setSpan(
+                    RelativeSizeSpan(0.7f),
+                    start,
+                    end,
+                    SpannableString.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+            }
+
+            val color = when (info.type) {
+                FormatterCharType.FUNCTION -> COLOR_FUNCTION
+                FormatterCharType.VARIABLE -> COLOR_VARIABLE
+                FormatterCharType.NUMBER -> COLOR_NUMBER
+                FormatterCharType.OPERATOR -> COLOR_OPERATOR
+                FormatterCharType.PAREN -> COLOR_VARIABLE
+            }
+
             spannableString.setSpan(
-                SuperscriptSpan(),
+                ForegroundColorSpan(color),
                 start,
                 end,
                 SpannableString.SPAN_EXCLUSIVE_EXCLUSIVE
             )
 
-            // RelativeSizeSpan: 将上标文字缩小到70%
-            spannableString.setSpan(
-                RelativeSizeSpan(0.7f),
-                start,
-                end,
-                SpannableString.SPAN_EXCLUSIVE_EXCLUSIVE
-            )
+            currentPos++
         }
 
         return spannableString
     }
 
-    /**
-     * Token类型枚举
-     */
-    private enum class TokenType {
-        NUMBER,          // 数字
-        VARIABLE,        // 变量（x, y等）
-        FUNCTION,        // 函数（sin, cos等）
-        LEFT_PAREN,      // 左括号
-        RIGHT_PAREN,     // 右括号
-        UNKNOWN          // 未知类型
+    private fun getTypeBeforeMultiply(text: String, index: Int): FormatterTokenType {
+        var i = index
+        while (i >= 0 && text[i].isWhitespace()) {
+            i--
+        }
+        if (i < 0) return FormatterTokenType.UNKNOWN
+        val char = text[i]
+        return when {
+            char == ')' -> FormatterTokenType.RIGHT_PAREN
+            char.isDigit() -> FormatterTokenType.NUMBER
+            char.isLetter() -> {
+                if (hasFunctionPattern(text, i)) FormatterTokenType.FUNCTION
+                else FormatterTokenType.VARIABLE
+            }
+            else -> FormatterTokenType.UNKNOWN
+        }
+    }
+
+    private fun getTypeAfterMultiply(text: String, index: Int): FormatterTokenType {
+        var i = index
+        while (i < text.length && text[i].isWhitespace()) {
+            i++
+        }
+        if (i >= text.length) return FormatterTokenType.UNKNOWN
+        val char = text[i]
+        return when {
+            char == '(' -> FormatterTokenType.LEFT_PAREN
+            char.isDigit() -> FormatterTokenType.NUMBER
+            char.isLetter() -> {
+                var j = i
+                while (j < text.length && text[j].isLetter()) {
+                    j++
+                }
+                if (j < text.length && text[j] == '(') FormatterTokenType.FUNCTION
+                else FormatterTokenType.VARIABLE
+            }
+            else -> FormatterTokenType.UNKNOWN
+        }
+    }
+
+    private fun hasFunctionPattern(text: String, index: Int): Boolean {
+        var start = index
+        while (start >= 0 && text[start].isLetter()) {
+            start--
+        }
+        start++
+        var end = index
+        while (end < text.length && text[end].isLetter()) {
+            end++
+        }
+        return end < text.length && text[end] == '('
     }
 }
 
-/**
- * 格式化结果
- *
- * @param plainText 纯文本版本（用于内部计算）
- * @param displayText 显示文本版本（SpannableString，带上标格式，无^符号）
- */
 data class FormattedResult(
     val plainText: String,
     val displayText: SpannableString

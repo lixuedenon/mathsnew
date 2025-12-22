@@ -55,6 +55,8 @@ class Tokenizer {
                             tokens.add(Token.Operator("×"))
                         }
                     }
+                    // 注意：这里不需要 i++，因为上面的while循环已经推进了i
+                    continue
                 }
 
                 // 字母（变量或函数名）
@@ -67,25 +69,29 @@ class Tokenizer {
 
                     val name = nameStr.toString()
 
-                    // 判断是否是函数（后面跟着左括号）
-                    val hasLeftParenAfter = i < expression.length && expression[i] == '('
-
-                    if (hasLeftParenAfter) {
+                    // 判断后面是否跟着左括号
+                    if (i < expression.length && expression[i] == '(') {
+                        // 后面有左括号，检查是否是函数
                         when (name) {
                             "sin", "cos", "tan", "cot", "sec", "csc",
                             "ln", "log", "sqrt", "exp", "abs" -> {
-                                // 这是函数，直接添加，不需要隐式乘法
+                                // 这是函数，添加函数token
                                 tokens.add(Token.Function(name))
-                                // 注意：不需要 continue，因为没有后续的隐式乘法检测了
+                                // 不添加乘号！
+                                // 注意：不需要 i++，因为上面的while循环已经推进了i
+                                continue
                             }
                             else -> {
-                                // 普通变量后跟括号，需要插入乘号：x(x+1) → x×(x+1)
+                                // 不是函数，是变量后跟括号，如 x(x+1)
                                 tokens.add(Token.Variable(name))
+                                // 添加隐式乘号
                                 tokens.add(Token.Operator("×"))
+                                // 注意：不需要 i++
+                                continue
                             }
                         }
                     } else {
-                        // 普通变量（后面不是左括号）
+                        // 后面没有左括号，这是普通变量
                         tokens.add(Token.Variable(name))
 
                         // 隐式乘法检测：变量后面跟字母或左括号
@@ -95,6 +101,8 @@ class Tokenizer {
                                 tokens.add(Token.Operator("×"))
                             }
                         }
+                        // 注意：不需要 i++
+                        continue
                     }
                 }
 
@@ -160,8 +168,6 @@ class Tokenizer {
                     throw ParseException("无法识别的字符: $char")
                 }
             }
-
-            i++
         }
 
         return tokens
