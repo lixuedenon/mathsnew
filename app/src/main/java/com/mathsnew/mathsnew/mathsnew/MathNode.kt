@@ -1,5 +1,5 @@
 // app/src/main/java/com/mathsnew/mathsnew/MathNode.kt
-// AST节点定义
+// AST节点定义（智能括号版本）
 
 package com.mathsnew.mathsnew
 
@@ -22,7 +22,7 @@ sealed class MathNode {
     }
 
     /**
-     * 二元运算节点
+     * 二元运算节点（智能括号版本）
      */
     data class BinaryOp(
         val operator: Operator,
@@ -30,12 +30,58 @@ sealed class MathNode {
         val right: MathNode
     ) : MathNode() {
         override fun toString(): String {
+            val leftStr = formatChild(left, isLeft = true)
+            val rightStr = formatChild(right, isLeft = false)
+
             return when (operator) {
-                Operator.ADD -> "($left+$right)"
-                Operator.SUBTRACT -> "($left-$right)"
-                Operator.MULTIPLY -> "($left×$right)"
-                Operator.DIVIDE -> "($left/$right)"  // ⚠️ 关键：这里必须是 /
-                Operator.POWER -> "($left^$right)"
+                Operator.ADD -> "$leftStr+$rightStr"
+                Operator.SUBTRACT -> "$leftStr-$rightStr"
+                Operator.MULTIPLY -> "$leftStr×$rightStr"
+                Operator.DIVIDE -> "$leftStr/$rightStr"
+                Operator.POWER -> "$leftStr^$rightStr"
+            }
+        }
+
+        /**
+         * 格式化子节点（根据优先级决定是否需要括号）
+         */
+        private fun formatChild(child: MathNode, isLeft: Boolean): String {
+            return if (needsParentheses(child, isLeft)) {
+                "($child)"
+            } else {
+                child.toString()
+            }
+        }
+
+        /**
+         * 判断子节点是否需要括号
+         *
+         * 规则：
+         * 1. 子节点优先级低于当前运算符 → 需要括号
+         * 2. 减法/除法的右子节点，如果是加减法 → 需要括号
+         */
+        private fun needsParentheses(child: MathNode, isLeft: Boolean): Boolean {
+            if (child !is BinaryOp) return false
+
+            val parentPrecedence = operator.precedence
+            val childPrecedence = child.operator.precedence
+
+            return when {
+                // 子节点优先级低 → 需要括号
+                childPrecedence < parentPrecedence -> true
+
+                // 减法的右子节点是加减法 → 需要括号
+                // 例如：a - (b + c)
+                !isLeft && operator == Operator.SUBTRACT &&
+                childPrecedence == Operator.ADD.precedence -> true
+
+                // 除法的右子节点是乘除法 → 需要括号
+                // 例如：a / (b × c), a / (b / c)
+                !isLeft && operator == Operator.DIVIDE &&
+                childPrecedence == Operator.MULTIPLY.precedence -> true
+
+                // 其他情况不需要括号
+                else -> false
             }
         }
     }
@@ -52,12 +98,12 @@ sealed class MathNode {
 }
 
 /**
- * 运算符枚举
+ * 运算符枚举（带优先级）
  */
 enum class Operator(val symbol: String, val precedence: Int) {
-    ADD("+", 1),
+    ADD("+", 1),        // 优先级最低
     SUBTRACT("-", 1),
     MULTIPLY("×", 2),
-    DIVIDE("/", 2),  // ⚠️ 关键：符号是 /
-    POWER("^", 3)
+    DIVIDE("/", 2),
+    POWER("^", 3)       // 优先级最高
 }
