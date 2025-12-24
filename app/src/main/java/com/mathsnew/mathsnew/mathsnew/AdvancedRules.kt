@@ -1,9 +1,71 @@
 // app/src/main/java/com/mathsnew/mathsnew/AdvancedRules.kt
-// 高级微分规则（带调试版本）
+// 高级微分规则（完整版 - 包含 CompositePowerRule）
 
 package com.mathsnew.mathsnew
 
 import android.util.Log
+
+/**
+ * 复合幂函数规则：d/dx[(f(x))^n] = n × (f(x))^(n-1) × f'(x)
+ *
+ * 优先级高于 GeneralPowerRule，专门处理底数是复合函数、指数是常数的情况
+ *
+ * 例如：
+ * - (2x)³ → 3(2x)² × 2 = 6(2x)² = 24x²
+ * - (x+1)² → 2(x+1) × 1 = 2(x+1)
+ * - (sin(x))² → 2sin(x) × cos(x)
+ */
+class CompositePowerRule : DerivativeRule {
+    override val name = "复合幂函数规则"
+    override val priority = 98  // 高于 GeneralPowerRule(95)，低于 PowerRule(100)
+
+    override fun matches(node: MathNode, variable: String): Boolean {
+        if (node !is MathNode.BinaryOp || node.operator != Operator.POWER) {
+            return false
+        }
+
+        val baseHasVar = containsVariable(node.left, variable)
+        val baseIsNotSimpleVar = node.left !is MathNode.Variable
+        val exponentIsConstant = node.right is MathNode.Number
+
+        // 匹配条件：底数包含变量但不是单纯变量，指数是常数
+        return baseHasVar && baseIsNotSimpleVar && exponentIsConstant
+    }
+
+    override fun apply(node: MathNode, variable: String, calculator: DerivativeCalculator): MathNode {
+        val powerNode = node as MathNode.BinaryOp
+        val u = powerNode.left  // 底数 f(x)
+        val n = (powerNode.right as MathNode.Number).value  // 指数 n
+
+        // 计算 f'(x)
+        val uPrime = calculator.differentiate(u, variable)
+
+        // 构建 n × (f(x))^(n-1) × f'(x)
+        val newExponent = MathNode.Number(n - 1.0)
+        val power = MathNode.BinaryOp(Operator.POWER, u, newExponent)
+        val coefficient = MathNode.Number(n)
+
+        val result = MathNode.BinaryOp(
+            Operator.MULTIPLY,
+            MathNode.BinaryOp(Operator.MULTIPLY, coefficient, power),
+            uPrime
+        )
+
+        Log.d("CompositePowerRule", "复合幂规则: $node -> $result")
+        return result
+    }
+
+    private fun containsVariable(node: MathNode, variable: String): Boolean {
+        return when (node) {
+            is MathNode.Number -> false
+            is MathNode.Variable -> node.name == variable
+            is MathNode.BinaryOp -> {
+                containsVariable(node.left, variable) || containsVariable(node.right, variable)
+            }
+            is MathNode.Function -> containsVariable(node.argument, variable)
+        }
+    }
+}
 
 /**
  * 商规则：d/dx(u/v) = (u'v - uv')/v²
@@ -66,8 +128,6 @@ class ExpRule : DerivativeRule {
 
 /**
  * 自然对数规则：d/dx[ln(u)] = u'/u
- *
- * ⚠️ 关键修复：必须返回 DIVIDE 节点！
  */
 class LnRule : DerivativeRule {
     override val name = "自然对数规则"
@@ -82,9 +142,8 @@ class LnRule : DerivativeRule {
         val u = funcNode.argument
         val uPrime = calculator.differentiate(u, variable)
 
-        // ⚠️ 这里必须是 DIVIDE，不是 MULTIPLY！
         val result = MathNode.BinaryOp(
-            Operator.DIVIDE,  // 除法
+            Operator.DIVIDE,
             uPrime,
             u
         )
@@ -93,7 +152,6 @@ class LnRule : DerivativeRule {
         Log.d("LnRule", "  内层: u = $u")
         Log.d("LnRule", "  导数: u' = $uPrime")
         Log.d("LnRule", "  结果: u'/u = $result")
-        Log.d("LnRule", "  运算符: ${(result as MathNode.BinaryOp).operator}")
 
         return result
     }
@@ -175,6 +233,11 @@ class AbsRule : DerivativeRule {
 
 /**
  * 一般幂函数规则：d/dx[u^v] = u^v × (v'×ln(u) + v×u'/u)
+ *
+ * 处理底数和指数都包含变量的情况，如：
+ * - x^x
+ * - x^(2x)
+ * - (sin(x))^(cos(x))
  */
 class GeneralPowerRule : DerivativeRule {
     override val name = "一般幂函数规则"
@@ -188,7 +251,9 @@ class GeneralPowerRule : DerivativeRule {
         val baseHasVar = containsVariable(node.left, variable)
         val expHasVar = containsVariable(node.right, variable)
 
-        return baseHasVar || expHasVar
+        // 只有当指数包含变量时才使用这个规则
+        // （底数有变量但指数是常数的情况由 CompositePowerRule 处理）
+        return expHasVar || (baseHasVar && expHasVar)
     }
 
     override fun apply(node: MathNode, variable: String, calculator: DerivativeCalculator): MathNode {
@@ -199,6 +264,7 @@ class GeneralPowerRule : DerivativeRule {
         val uPrime = calculator.differentiate(u, variable)
         val vPrime = calculator.differentiate(v, variable)
 
+        // d/dx[u^v] = u^v × (v'×ln(u) + v×u'/u)
         val term1 = MathNode.BinaryOp(
             Operator.MULTIPLY,
             vPrime,
@@ -213,7 +279,9 @@ class GeneralPowerRule : DerivativeRule {
 
         val bracket = MathNode.BinaryOp(Operator.ADD, term1, term2)
 
-        return MathNode.BinaryOp(Operator.MULTIPLY, node, bracket)
+        val result = MathNode.BinaryOp(Operator.MULTIPLY, node, bracket)
+        Log.d("GeneralPowerRule", "一般幂规则: $node -> $result")
+        return result
     }
 
     private fun containsVariable(node: MathNode, variable: String): Boolean {

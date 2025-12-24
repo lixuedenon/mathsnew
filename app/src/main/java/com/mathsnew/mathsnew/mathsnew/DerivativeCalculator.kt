@@ -1,5 +1,5 @@
 // app/src/main/java/com/mathsnew/mathsnew/DerivativeCalculator.kt
-// 微分计算器（规则引擎）
+// 微分计算器（规则引擎）- 完整版
 
 package com.mathsnew.mathsnew
 
@@ -13,17 +13,23 @@ package com.mathsnew.mathsnew
  * 3. 找到第一个匹配的规则
  * 4. 应用该规则进行转换
  * 5. 返回转换后的AST
- *
- * 测试建议：
- * 1. 在CalculusFragment输入 "x^2"，点击微分，应显示 "2×x"
- * 2. 输入 "x^2+3*x"，点击微分，应显示 "2×x+3"
- * 3. 输入 "sin(x)"，点击微分，应显示 "cos(x)"
- * 4. 输入 "sin(x^2)"，点击微分，应显示 "cos(x^2)×2×x"
  */
 class DerivativeCalculator {
 
     /**
      * 所有微分规则（按优先级排序）
+     *
+     * 规则优先级说明：
+     * 200 - 常数规则
+     * 150 - 变量规则
+     * 100 - 简单幂规则 (x^n)
+     * 98  - 复合幂规则 ((f(x))^n) ← 新增
+     * 95  - 一般幂规则 (u^v)
+     * 90  - 加减法规则
+     * 85  - 商规则
+     * 80  - 乘法规则
+     * 70  - 三角函数规则
+     * 65  - 指数对数规则
      */
     private val rules: List<DerivativeRule> = listOf(
         // 基础规则（优先级 200-150）
@@ -31,14 +37,15 @@ class DerivativeCalculator {
         VariableRule(),       // 优先级 150
 
         // 幂运算规则（优先级 100-95）
-        PowerRule(),          // 优先级 100
-        GeneralPowerRule(),   // 优先级 95（处理 x^x 等情况）
+        PowerRule(),          // 优先级 100（处理 x^n）
+        CompositePowerRule(), // 优先级 98（处理 (f(x))^n）← 新增
+        GeneralPowerRule(),   // 优先级 95（处理 u^v，如 x^x）
 
         // 四则运算规则（优先级 90-80）
         AdditionRule(),       // 优先级 90
         SubtractionRule(),    // 优先级 90
         QuotientRule(),       // 优先级 85（商规则）
-        ProductRule(),        // 优先级 80
+        ProductRule(),        // 优先级 80（乘积规则）
 
         // 三角函数规则（优先级 70）
         SinRule(),            // 优先级 70
