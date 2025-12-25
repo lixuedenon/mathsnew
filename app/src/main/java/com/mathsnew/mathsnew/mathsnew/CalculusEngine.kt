@@ -1,5 +1,5 @@
 // app/src/main/java/com/mathsnew/mathsnew/CalculusEngine.kt
-// 微积分计算引擎（最终正确版）
+// 微积分计算引擎（修复二阶导数问题）
 
 package com.mathsnew.mathsnew
 
@@ -41,12 +41,12 @@ class CalculusEngine {
             val simplifiedAst = simplifier.simplify(derivativeAst)
             Log.d("CalculusEngine", "简化结果AST: $simplifiedAst")
 
-            // 步骤4: 转换为字符串
+            // 步骤4: 转换为字符串（用于后续计算）
             Log.d("CalculusEngine", "步骤4: 转换为字符串...")
             val simplifiedString = simplifiedAst.toString()
-            Log.d("CalculusEngine", "字符串: $simplifiedString")
+            Log.d("CalculusEngine", "原始字符串: $simplifiedString")
 
-            // 步骤5: 格式化为手写数学格式
+            // 步骤5: 格式化为手写数学格式（仅用于显示）
             Log.d("CalculusEngine", "步骤5: 格式化输出...")
             val formattedResult = formatter.format(simplifiedString)
             Log.d("CalculusEngine", "格式化纯文本: ${formattedResult.plainText}")
@@ -54,9 +54,10 @@ class CalculusEngine {
             Log.d("CalculusEngine", "✅ 计算成功!")
             Log.d("CalculusEngine", "========================================")
 
-            // 返回成功结果
+            // 🔧 关键修复：result 使用原始字符串（可以被解析器识别）
+            //              displayText 使用格式化后的字符串（用于显示）
             CalculationResult.Success(
-                result = formattedResult.plainText,
+                result = simplifiedString,  // ← 修改：使用原始字符串，不是 formattedResult.plainText
                 displayText = formattedResult.displayText
             )
 
@@ -90,10 +91,12 @@ class CalculusEngine {
 sealed class CalculationResult {
     /**
      * 成功结果
+     * @param result 原始计算结果字符串（用于后续计算，可被解析器识别）
+     * @param displayText 格式化后的显示文本（用于UI显示，包含上标等格式）
      */
     data class Success(
-        val result: String,
-        val displayText: SpannableString
+        val result: String,           // ← 用于后续计算的原始字符串
+        val displayText: SpannableString  // ← 用于显示的格式化字符串
     ) : CalculationResult()
 
     /**

@@ -338,62 +338,98 @@ class CalculusFragment : Fragment() {
     }
 
     private fun calculateDerivative() {
-        Log.d("CalculusFragment", "========================================")
-        Log.d("CalculusFragment", "===== calculateDerivative 被调用 =====")
-        Log.d("CalculusFragment", "currentExpression = '$currentExpression'")
+        Log.d("DERIV_DEBUG", "=================================================")
+        Log.d("DERIV_DEBUG", "========== calculateDerivative START ===========")
+        Log.d("DERIV_DEBUG", "=================================================")
+        Log.d("DERIV_DEBUG", "currentExpression = '$currentExpression'")
 
         if (currentExpression.isEmpty()) {
+            Log.d("DERIV_DEBUG", "❌ 表达式为空")
             Toast.makeText(requireContext(), "请先输入表达式", Toast.LENGTH_SHORT).show()
             return
         }
 
         if (currentExpression.contains("^n")) {
+            Log.d("DERIV_DEBUG", "❌ 包含占位符 ^n")
             Toast.makeText(requireContext(), "请完成指数输入", Toast.LENGTH_SHORT).show()
             return
         }
 
         if (hasResult) {
+            Log.d("DERIV_DEBUG", "❌ 已有结果，忽略重复计算")
             return
         }
 
         stopBlinkAnimation()
 
         try {
-            Log.d("CalculusFragment", "开始计算一阶导数...")
+            Log.d("DERIV_DEBUG", "")
+            Log.d("DERIV_DEBUG", "========== 步骤1: 计算一阶导数 ==========")
+
             when (val firstDerivResult = calculusEngine.calculateDerivative(currentExpression)) {
                 is CalculationResult.Success -> {
-                    Log.d("CalculusFragment", "✅ 一阶导数计算成功")
+                    Log.d("DERIV_DEBUG", "✅✅✅ 一阶导数计算成功！")
+                    Log.d("DERIV_DEBUG", "firstDerivResult.result = '${firstDerivResult.result}'")
+                    Log.d("DERIV_DEBUG", "firstDerivResult.displayText = '${firstDerivResult.displayText}'")
 
                     val firstDerivExpression = firstDerivResult.result
 
-                    Log.d("CalculusFragment", "开始计算二阶导数...")
+                    Log.d("DERIV_DEBUG", "")
+                    Log.d("DERIV_DEBUG", "========== 步骤2: 计算二阶导数 ==========")
+                    Log.d("DERIV_DEBUG", "输入表达式: '$firstDerivExpression'")
+
                     when (val secondDerivResult = calculusEngine.calculateDerivative(firstDerivExpression)) {
                         is CalculationResult.Success -> {
-                            Log.d("CalculusFragment", "✅ 二阶导数计算成功")
+                            Log.d("DERIV_DEBUG", "")
+                            Log.d("DERIV_DEBUG", "🎉🎉🎉🎉🎉🎉🎉🎉🎉🎉🎉🎉🎉🎉🎉")
+                            Log.d("DERIV_DEBUG", "✅✅✅ 二阶导数计算成功！！！")
+                            Log.d("DERIV_DEBUG", "🎉🎉🎉🎉🎉🎉🎉🎉🎉🎉🎉🎉🎉🎉🎉")
+                            Log.d("DERIV_DEBUG", "secondDerivResult.result = '${secondDerivResult.result}'")
+                            Log.d("DERIV_DEBUG", "secondDerivResult.displayText = '${secondDerivResult.displayText}'")
+
+                            Log.d("DERIV_DEBUG", "")
+                            Log.d("DERIV_DEBUG", "========== 步骤3: 调用 appendResultsToDisplay ==========")
+                            Log.d("DERIV_DEBUG", "参数1 firstDerivText = '${firstDerivResult.displayText}'")
+                            Log.d("DERIV_DEBUG", "参数2 secondDerivText = '${secondDerivResult.displayText}'")
 
                             appendResultsToDisplay(
                                 firstDerivResult.displayText,
                                 secondDerivResult.displayText
                             )
 
+                            Log.d("DERIV_DEBUG", "✅ appendResultsToDisplay 调用完成")
+
                             hasResult = true
                             disableDerivativeButton()
 
-                            Log.d("CalculusFragment", "开始生成图像数据...")
+                            Log.d("DERIV_DEBUG", "")
+                            Log.d("DERIV_DEBUG", "========== 步骤4: 生成图像 ==========")
                             try {
                                 val graphData = graphEngine.generateGraphData(currentExpression)
                                 binding.graphView.visibility = View.VISIBLE
                                 binding.graphView.setGraphData(graphData)
-                                Log.d("CalculusFragment", "✅ 图像绘制完成")
+                                Log.d("DERIV_DEBUG", "✅ 图像绘制完成")
                             } catch (e: Exception) {
-                                Log.e("CalculusFragment", "❌ 绘图失败: ${e.message}", e)
+                                Log.e("DERIV_DEBUG", "❌ 绘图失败: ${e.message}", e)
                                 Toast.makeText(requireContext(), "绘图失败: ${e.message}", Toast.LENGTH_SHORT).show()
                             }
                         }
                         is CalculationResult.Error -> {
-                            Log.d("CalculusFragment", "⚠️ 二阶导数计算失败: ${secondDerivResult.message}")
+                            Log.d("DERIV_DEBUG", "")
+                            Log.d("DERIV_DEBUG", "❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌")
+                            Log.d("DERIV_DEBUG", "❌❌❌ 二阶导数计算失败！！！")
+                            Log.d("DERIV_DEBUG", "❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌")
+                            Log.d("DERIV_DEBUG", "错误信息: ${secondDerivResult.message}")
+
+                            Log.d("DERIV_DEBUG", "")
+                            Log.d("DERIV_DEBUG", "========== 调用 appendResultsToDisplay（无二阶导数） ==========")
+                            Log.d("DERIV_DEBUG", "参数1 firstDerivText = '${firstDerivResult.displayText}'")
+                            Log.d("DERIV_DEBUG", "参数2 secondDerivText = null")
 
                             appendResultsToDisplay(firstDerivResult.displayText, null)
+
+                            Log.d("DERIV_DEBUG", "✅ appendResultsToDisplay 调用完成（无二阶导数）")
+
                             hasResult = true
                             disableDerivativeButton()
 
@@ -402,42 +438,70 @@ class CalculusFragment : Fragment() {
                                 binding.graphView.visibility = View.VISIBLE
                                 binding.graphView.setGraphData(graphData)
                             } catch (e: Exception) {
-                                Log.e("CalculusFragment", "❌ 绘图失败: ${e.message}", e)
+                                Log.e("DERIV_DEBUG", "❌ 绘图失败: ${e.message}", e)
                             }
                         }
                     }
                 }
                 is CalculationResult.Error -> {
-                    Log.d("CalculusFragment", "❌ 一阶导数计算失败: ${firstDerivResult.message}")
+                    Log.d("DERIV_DEBUG", "❌ 一阶导数计算失败")
+                    Log.d("DERIV_DEBUG", "错误信息: ${firstDerivResult.message}")
                     Toast.makeText(requireContext(), firstDerivResult.message, Toast.LENGTH_LONG).show()
                 }
             }
         } catch (e: Exception) {
-            Log.e("CalculusFragment", "💥 发生异常: ${e.message}", e)
+            Log.e("DERIV_DEBUG", "💥💥💥 发生异常", e)
+            Log.e("DERIV_DEBUG", "异常信息: ${e.message}")
+            Log.e("DERIV_DEBUG", "堆栈跟踪:", e)
             Toast.makeText(requireContext(), "发生异常: ${e.message}", Toast.LENGTH_LONG).show()
         }
 
-        Log.d("CalculusFragment", "===== calculateDerivative 结束 =====")
-        Log.d("CalculusFragment", "========================================")
+        Log.d("DERIV_DEBUG", "")
+        Log.d("DERIV_DEBUG", "=================================================")
+        Log.d("DERIV_DEBUG", "========== calculateDerivative END =============")
+        Log.d("DERIV_DEBUG", "=================================================")
     }
 
     private fun appendResultsToDisplay(
         firstDerivText: SpannableString,
         secondDerivText: SpannableString?
     ) {
+        Log.d("DERIV_DEBUG", "")
+        Log.d("DERIV_DEBUG", ">>> 进入 appendResultsToDisplay <<<")
+        Log.d("DERIV_DEBUG", "参数 firstDerivText = '$firstDerivText'")
+        Log.d("DERIV_DEBUG", "参数 secondDerivText = ${if (secondDerivText != null) "'$secondDerivText'" else "null"}")
+
         val currentText = binding.tvDisplay.text
+        Log.d("DERIV_DEBUG", "当前显示文本 = '$currentText'")
+
         val newText = SpannableStringBuilder()
 
         newText.append(currentText)
+        Log.d("DERIV_DEBUG", "步骤1: append currentText")
+
         newText.append("\nf'(x) = ")
+        Log.d("DERIV_DEBUG", "步骤2: append '\\nf'(x) = '")
+
         newText.append(firstDerivText)
+        Log.d("DERIV_DEBUG", "步骤3: append firstDerivText")
 
         if (secondDerivText != null) {
+            Log.d("DERIV_DEBUG", "步骤4: secondDerivText 不为 null，继续添加")
             newText.append("\nf''(x) = ")
+            Log.d("DERIV_DEBUG", "步骤4.1: append '\\nf''(x) = '")
             newText.append(secondDerivText)
+            Log.d("DERIV_DEBUG", "步骤4.2: append secondDerivText")
+        } else {
+            Log.d("DERIV_DEBUG", "步骤4: secondDerivText 为 null，跳过")
         }
 
+        Log.d("DERIV_DEBUG", "最终文本内容 = '$newText'")
+
         binding.tvDisplay.text = newText
+        Log.d("DERIV_DEBUG", "✅ 设置 tvDisplay.text 完成")
+
+        Log.d("DERIV_DEBUG", "<<< 退出 appendResultsToDisplay >>>")
+        Log.d("DERIV_DEBUG", "")
     }
 
     private fun disableDerivativeButton() {
