@@ -1,5 +1,5 @@
 // app/src/main/java/com/mathsnew/mathsnew/CalculusFragment.kt
-// 微积分计算器页面 - 支持SpannableString上标显示和语法高亮
+// 微积分计算器页面 - 支持SpannableString上标显示和语法高亮 + 绘图功能 + 二阶导数显示
 
 package com.mathsnew.mathsnew
 
@@ -19,17 +19,12 @@ import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
 import com.mathsnew.mathsnew.databinding.FragmentCalculusBinding
 import android.util.Log
+import com.mathsnew.mathsnew.calculus.graph.GraphEngine
 
-/**
- * 字符类型枚举
- */
 private enum class CharType {
     NUMBER, VARIABLE, OPERATOR, FUNCTION, PAREN, PLACEHOLDER
 }
 
-/**
- * 字符信息数据类
- */
 private data class CharInfo(
     val char: Char,
     val type: CharType,
@@ -37,9 +32,6 @@ private data class CharInfo(
     val isPlaceholder: Boolean = false
 )
 
-/**
- * 微积分计算器Fragment
- */
 class CalculusFragment : Fragment() {
 
     private var _binding: FragmentCalculusBinding? = null
@@ -47,6 +39,7 @@ class CalculusFragment : Fragment() {
 
     private var currentExpression = ""
     private val calculusEngine = CalculusEngine()
+    private val graphEngine = GraphEngine()
 
     private var hasResult = false
     private var blinkAnimator: ValueAnimator? = null
@@ -70,6 +63,8 @@ class CalculusFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+
+        binding.graphView.visibility = View.GONE
 
         setupBackButton()
         setupKeyboardListeners()
@@ -162,6 +157,8 @@ class CalculusFragment : Fragment() {
         stopBlinkAnimation()
         updateDisplay()
         enableDerivativeButton()
+        binding.graphView.visibility = View.GONE
+        binding.graphView.clearGraph()
     }
 
     private fun backspace() {
@@ -340,101 +337,105 @@ class CalculusFragment : Fragment() {
         return spannableString
     }
 
-    /**
-     * 计算微分 - 带详细调试日志
-     */
     private fun calculateDerivative() {
         Log.d("CalculusFragment", "========================================")
         Log.d("CalculusFragment", "===== calculateDerivative 被调用 =====")
         Log.d("CalculusFragment", "currentExpression = '$currentExpression'")
-        Log.d("CalculusFragment", "currentExpression.length = ${currentExpression.length}")
-        Log.d("CalculusFragment", "hasResult = $hasResult")
 
-        // 检查1：表达式是否为空
         if (currentExpression.isEmpty()) {
-            Log.d("CalculusFragment", "❌ 检查1失败: 表达式为空")
-            Toast.makeText(
-                requireContext(),
-                "请先输入表达式",
-                Toast.LENGTH_SHORT
-            ).show()
+            Toast.makeText(requireContext(), "请先输入表达式", Toast.LENGTH_SHORT).show()
             return
         }
-        Log.d("CalculusFragment", "✅ 检查1通过: 表达式不为空")
 
-        // 检查2：是否有未完成的占位符
         if (currentExpression.contains("^n")) {
-            Log.d("CalculusFragment", "❌ 检查2失败: 包含占位符 ^n")
-            Toast.makeText(
-                requireContext(),
-                "请完成指数输入",
-                Toast.LENGTH_SHORT
-            ).show()
+            Toast.makeText(requireContext(), "请完成指数输入", Toast.LENGTH_SHORT).show()
             return
         }
-        Log.d("CalculusFragment", "✅ 检查2通过: 不包含占位符")
 
-        // 检查3：是否已有结果
         if (hasResult) {
-            Log.d("CalculusFragment", "❌ 检查3失败: 已有结果，忽略重复计算")
             return
         }
-        Log.d("CalculusFragment", "✅ 检查3通过: 没有结果")
 
-        // 停止闪烁动画
         stopBlinkAnimation()
-        Log.d("CalculusFragment", "✅ 已停止闪烁动画")
 
-        Log.d("CalculusFragment", "🚀 准备调用计算引擎...")
-        Log.d("CalculusFragment", "传入表达式: '$currentExpression'")
-
-        // 调用计算引擎
         try {
-            Log.d("CalculusFragment", "调用 calculusEngine.calculateDerivative()...")
-            when (val result = calculusEngine.calculateDerivative(currentExpression)) {
+            Log.d("CalculusFragment", "开始计算一阶导数...")
+            when (val firstDerivResult = calculusEngine.calculateDerivative(currentExpression)) {
                 is CalculationResult.Success -> {
-                    Log.d("CalculusFragment", "✅ 计算成功!")
-                    Log.d("CalculusFragment", "结果文本: ${result.displayText}")
+                    Log.d("CalculusFragment", "✅ 一阶导数计算成功")
 
-                    appendResultToDisplay(result.displayText)
-                    hasResult = true
-                    disableDerivativeButton()
+                    val firstDerivExpression = firstDerivResult.result
 
-                    Log.d("CalculusFragment", "✅ 结果已显示")
+                    Log.d("CalculusFragment", "开始计算二阶导数...")
+                    when (val secondDerivResult = calculusEngine.calculateDerivative(firstDerivExpression)) {
+                        is CalculationResult.Success -> {
+                            Log.d("CalculusFragment", "✅ 二阶导数计算成功")
+
+                            appendResultsToDisplay(
+                                firstDerivResult.displayText,
+                                secondDerivResult.displayText
+                            )
+
+                            hasResult = true
+                            disableDerivativeButton()
+
+                            Log.d("CalculusFragment", "开始生成图像数据...")
+                            try {
+                                val graphData = graphEngine.generateGraphData(currentExpression)
+                                binding.graphView.visibility = View.VISIBLE
+                                binding.graphView.setGraphData(graphData)
+                                Log.d("CalculusFragment", "✅ 图像绘制完成")
+                            } catch (e: Exception) {
+                                Log.e("CalculusFragment", "❌ 绘图失败: ${e.message}", e)
+                                Toast.makeText(requireContext(), "绘图失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                        is CalculationResult.Error -> {
+                            Log.d("CalculusFragment", "⚠️ 二阶导数计算失败: ${secondDerivResult.message}")
+
+                            appendResultsToDisplay(firstDerivResult.displayText, null)
+                            hasResult = true
+                            disableDerivativeButton()
+
+                            try {
+                                val graphData = graphEngine.generateGraphData(currentExpression)
+                                binding.graphView.visibility = View.VISIBLE
+                                binding.graphView.setGraphData(graphData)
+                            } catch (e: Exception) {
+                                Log.e("CalculusFragment", "❌ 绘图失败: ${e.message}", e)
+                            }
+                        }
+                    }
                 }
                 is CalculationResult.Error -> {
-                    Log.d("CalculusFragment", "❌ 计算失败!")
-                    Log.d("CalculusFragment", "错误信息: ${result.message}")
-
-                    Toast.makeText(
-                        requireContext(),
-                        result.message,
-                        Toast.LENGTH_LONG
-                    ).show()
+                    Log.d("CalculusFragment", "❌ 一阶导数计算失败: ${firstDerivResult.message}")
+                    Toast.makeText(requireContext(), firstDerivResult.message, Toast.LENGTH_LONG).show()
                 }
             }
         } catch (e: Exception) {
             Log.e("CalculusFragment", "💥 发生异常: ${e.message}", e)
-            Toast.makeText(
-                requireContext(),
-                "发生异常: ${e.message}",
-                Toast.LENGTH_LONG
-            ).show()
+            Toast.makeText(requireContext(), "发生异常: ${e.message}", Toast.LENGTH_LONG).show()
         }
 
         Log.d("CalculusFragment", "===== calculateDerivative 结束 =====")
         Log.d("CalculusFragment", "========================================")
     }
 
-    private fun appendResultToDisplay(displayText: SpannableString) {
-        val resultPrefix = "\nd/dx = "
-
+    private fun appendResultsToDisplay(
+        firstDerivText: SpannableString,
+        secondDerivText: SpannableString?
+    ) {
         val currentText = binding.tvDisplay.text
-
         val newText = SpannableStringBuilder()
+
         newText.append(currentText)
-        newText.append(resultPrefix)
-        newText.append(displayText)
+        newText.append("\nf'(x) = ")
+        newText.append(firstDerivText)
+
+        if (secondDerivText != null) {
+            newText.append("\nf''(x) = ")
+            newText.append(secondDerivText)
+        }
 
         binding.tvDisplay.text = newText
     }
