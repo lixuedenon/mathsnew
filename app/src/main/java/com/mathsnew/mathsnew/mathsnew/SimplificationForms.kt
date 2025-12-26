@@ -3,6 +3,8 @@
 
 package com.mathsnew.mathsnew
 
+import kotlin.math.abs
+
 /**
  * 多形式化简结果
  *
@@ -19,7 +21,10 @@ data class SimplificationForms(
     /**
      * 获取用于显示的表达式列表
      *
-     * 自动去重：如果多个形式的字符串表示相同，只保留第一个
+     * 改进的去重逻辑：
+     * 1. 先对每个表达式进行标准化
+     * 2. 再比较字符串表示
+     * 3. 只保留真正不同的形式
      *
      * @return 去重后的化简形式列表
      */
@@ -28,7 +33,7 @@ data class SimplificationForms(
         val seen = mutableSetOf<String>()
 
         for (form in forms) {
-            val key = form.expression.toString()
+            val key = canonicalize(form.expression)
             if (key !in seen) {
                 unique.add(form)
                 seen.add(key)
@@ -36,6 +41,44 @@ data class SimplificationForms(
         }
 
         return unique
+    }
+
+    /**
+     * 标准化表达式以进行比较
+     *
+     * 规则：
+     * 1. 将浮点数标准化（2.0 → 2）
+     * 2. 忽略括号的细微差异
+     * 3. 统一运算符表示
+     */
+    private fun canonicalize(node: MathNode): String {
+        return when (node) {
+            is MathNode.Number -> {
+                val value = node.value
+                if (abs(value - value.toInt()) < 1e-10) {
+                    value.toInt().toString()
+                } else {
+                    value.toString()
+                }
+            }
+            is MathNode.Variable -> node.name
+            is MathNode.BinaryOp -> {
+                val left = canonicalize(node.left)
+                val right = canonicalize(node.right)
+                val op = when (node.operator) {
+                    Operator.ADD -> "+"
+                    Operator.SUBTRACT -> "-"
+                    Operator.MULTIPLY -> "*"
+                    Operator.DIVIDE -> "/"
+                    Operator.POWER -> "^"
+                }
+                "($left$op$right)"
+            }
+            is MathNode.Function -> {
+                val arg = canonicalize(node.argument)
+                "${node.name}($arg)"
+            }
+        }
     }
 }
 

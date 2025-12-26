@@ -117,7 +117,7 @@ class GraphEngine {
         val xMin = -10.0
         val xMax = 10.0
         val step = 0.1
-        val epsilon = 0.01
+        val epsilon = 0.001
 
         var x = xMin
         while (x <= xMax) {
@@ -160,7 +160,7 @@ class GraphEngine {
         val xMin = -10.0
         val xMax = 10.0
         val step = 0.1
-        val epsilon = 0.01
+        val epsilon = 0.001
 
         var x = xMin
         while (x <= xMax) {
