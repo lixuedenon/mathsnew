@@ -6,9 +6,10 @@ package com.mathsnew.mathsnew
 /**
  * 多形式化简结果
  *
- * 包含表达式的多种等价形式，用户可以同时查看：
+ * 包含表达式的多种等价形式（最多三种），用户可以同时查看：
  * - 因式形式（保留结构）
  * - 展开形式（合并同类项）
+ * - 标准形式（标准多项式）
  *
  * 自动去重，只显示有差异的形式
  */
@@ -56,5 +57,6 @@ data class SimplifiedForm(
  */
 enum class SimplificationType {
     FACTORED,    // 因式形式（保留结构，只展开数字括号）
-    EXPANDED     // 展开形式（完全展开，合并同类项）
+    EXPANDED,    // 展开形式（完全展开，合并同类项）
+    STANDARD     // 标准形式（标准多项式形式）
 }

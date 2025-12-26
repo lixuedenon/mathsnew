@@ -157,6 +157,7 @@ class CalculusFragment : Fragment() {
         updateDisplay()
         enableDerivativeButton()
         binding.graphView.clearGraph()
+        binding.graphView.visibility = View.GONE
     }
 
     private fun backspace() {
@@ -392,6 +393,7 @@ class CalculusFragment : Fragment() {
                     try {
                         val graphData = graphEngine.generateGraphData(currentExpression)
                         binding.graphView.setGraphData(graphData)
+                        binding.graphView.visibility = View.VISIBLE
                         Log.d("CalculusFragment", "✅ 图像绘制完成")
                     } catch (e: Exception) {
                         Log.e("CalculusFragment", "❌ 绘图失败: ${e.message}", e)

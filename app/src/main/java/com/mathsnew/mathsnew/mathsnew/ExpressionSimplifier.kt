@@ -10,26 +10,16 @@ import kotlin.math.round
 /**
  * 表达式简化器
  *
- * 提供两种化简策略：
+ * 提供最多三种化简策略：
  * 1. 因式化简（FACTORED）：保留有意义的因式结构，只展开数字括号
  * 2. 展开化简（EXPANDED）：完全展开，合并所有同类项
+ * 3. 标准化简（STANDARD）：标准多项式形式，系数合并优化
  *
  * 化简原则：
  * ✅ 消除冗余（0+x, 1×x）
  * ✅ 合并纯数字运算
  * ✅ 标准化负数表示
  * ✅ 浮点数容差处理
- *
- * 因式化简额外规则：
- * ✅ 只展开数字×括号（2(x+1) → 2x+2）
- * ✅ 保留因式×因式（(x+1)(x+2) 不变）
- * ✅ 合并相同项（2x + 3x → 5x）
- *
- * 展开化简额外规则：
- * ✅ 展开所有括号
- * ✅ 全面合并同类项（2x+3x+4x → 9x）
- * ✅ 分数约分（6x/4 → 3x/2）
- * ✅ 幂的合并（x × x → x²）
  */
 class ExpressionSimplifier {
 
@@ -38,7 +28,7 @@ class ExpressionSimplifier {
     }
 
     /**
-     * 生成多种化简形式
+     * 生成多种化简形式（最多三种）
      *
      * @param node 待化简的AST节点
      * @return 包含多种形式的SimplificationForms对象
@@ -58,6 +48,12 @@ class ExpressionSimplifier {
             type = SimplificationType.EXPANDED
         ))
 
+        val standard = simplifyStandard(node)
+        forms.add(SimplifiedForm(
+            expression = standard,
+            type = SimplificationType.STANDARD
+        ))
+
         return SimplificationForms(forms)
     }
 
@@ -65,9 +61,6 @@ class ExpressionSimplifier {
      * 因式化简（保留结构）
      *
      * 只展开数字×括号，保留其他因式结构
-     *
-     * @param node 待化简的AST节点
-     * @return 化简后的AST节点
      */
     private fun simplifyFactored(node: MathNode): MathNode {
         var current = node
@@ -121,8 +114,6 @@ class ExpressionSimplifier {
 
     /**
      * 加法化简（因式模式）
-     *
-     * 只合并完全相同底数的项，不展开
      */
     private fun simplifyAdditionFactored(left: MathNode, right: MathNode): MathNode {
         if (left is MathNode.Number && abs(left.value) < EPSILON) return right
@@ -195,8 +186,6 @@ class ExpressionSimplifier {
 
     /**
      * 乘法化简（因式模式）
-     *
-     * 只展开数字×括号，保留因式×因式
      */
     private fun simplifyMultiplicationFactored(left: MathNode, right: MathNode): MathNode {
         if (left is MathNode.Number && abs(left.value) < EPSILON) return MathNode.Number(0.0)
@@ -282,8 +271,6 @@ class ExpressionSimplifier {
 
     /**
      * 展开分配律（因式模式）
-     *
-     * 只展开数字×(加减法)
      */
     private fun expandDistributiveFactored(
         coefficient: MathNode.Number,
@@ -364,11 +351,6 @@ class ExpressionSimplifier {
 
     /**
      * 展开化简（完全展开）
-     *
-     * 展开所有括号，合并所有同类项
-     *
-     * @param node 待化简的AST节点
-     * @return 化简后的AST节点
      */
     private fun simplifyExpanded(node: MathNode): MathNode {
         var current = node
@@ -422,12 +404,14 @@ class ExpressionSimplifier {
 
     /**
      * 加法化简（展开模式）
-     *
-     * 收集所有加法项并合并同类项
      */
     private fun simplifyAdditionExpanded(left: MathNode, right: MathNode): MathNode {
         val allTerms = collectAdditionTerms(left) + collectAdditionTerms(right)
         val mergedTerms = mergeTerms(allTerms)
+
+        if (mergedTerms.isEmpty()) {
+            return MathNode.Number(0.0)
+        }
 
         if (mergedTerms.size == 1) {
             return mergedTerms[0]
@@ -453,29 +437,30 @@ class ExpressionSimplifier {
     }
 
     /**
-     * 合并同类项
+     * 合并同类项（优化版）
      */
     private fun mergeTerms(terms: List<MathNode>): List<MathNode> {
         if (terms.isEmpty()) return listOf(MathNode.Number(0.0))
         if (terms.size == 1) return terms
 
-        val termsByBase = mutableMapOf<String, MutableList<MathNode>>()
+        val termsByBase = mutableMapOf<String, MutableList<Pair<Double, MathNode>>>()
 
         for (term in terms) {
+            val coefficient = extractCoefficient(term)
             val base = extractBase(term)
-            val baseKey = base.toString()
+            val baseKey = normalizeBase(base)
 
             if (!termsByBase.containsKey(baseKey)) {
                 termsByBase[baseKey] = mutableListOf()
             }
-            termsByBase[baseKey]!!.add(term)
+            termsByBase[baseKey]!!.add(Pair(coefficient, base))
         }
 
         val result = mutableListOf<MathNode>()
 
         for ((_, groupTerms) in termsByBase) {
-            val base = extractBase(groupTerms[0])
-            val totalCoefficient = groupTerms.sumOf { extractCoefficient(it) }
+            val base = groupTerms[0].second
+            val totalCoefficient = groupTerms.sumOf { it.first }
 
             when {
                 abs(totalCoefficient) < EPSILON -> {
@@ -493,6 +478,25 @@ class ExpressionSimplifier {
         }
 
         return if (result.isEmpty()) listOf(MathNode.Number(0.0)) else result
+    }
+
+    /**
+     * 标准化底数表示
+     */
+    private fun normalizeBase(base: MathNode): String {
+        return when (base) {
+            is MathNode.Number -> {
+                if (abs(base.value - 1.0) < EPSILON) "1" else base.value.toString()
+            }
+            is MathNode.Variable -> base.name
+            is MathNode.BinaryOp -> {
+                when (base.operator) {
+                    Operator.POWER -> "${normalizeBase(base.left)}^${normalizeBase(base.right)}"
+                    else -> base.toString()
+                }
+            }
+            is MathNode.Function -> "${base.name}(${normalizeBase(base.argument)})"
+        }
     }
 
     /**
@@ -553,6 +557,10 @@ class ExpressionSimplifier {
         }
         if (right is MathNode.Number && isAdditionOrSubtraction(left)) {
             return expandDistributiveExpanded(right, left)
+        }
+
+        if (left is MathNode.Number && right is MathNode.Number) {
+            return MathNode.Number(left.value * right.value)
         }
 
         val allFactors = collectMultiplicationFactors(left) + collectMultiplicationFactors(right)
@@ -634,35 +642,27 @@ class ExpressionSimplifier {
      * 除法化简（展开模式）
      */
     private fun simplifyDivisionExpanded(left: MathNode, right: MathNode): MathNode {
-        Log.d("Simplifier", "简化除法: $left / $right")
-
         if (right is MathNode.Number && abs(right.value - 1.0) < EPSILON) {
-            Log.d("Simplifier", "  规则: x/1 = x")
             return left
         }
 
         if (left is MathNode.Number && abs(left.value) < EPSILON) {
-            Log.d("Simplifier", "  规则: 0/x = 0")
             return MathNode.Number(0.0)
         }
 
         if (left is MathNode.Number && right is MathNode.Number) {
-            Log.d("Simplifier", "  规则: 数字相除")
             return MathNode.Number(left.value / right.value)
         }
 
         if (left == right) {
-            Log.d("Simplifier", "  规则: x/x = 1")
             return MathNode.Number(1.0)
         }
 
         val simplified = simplifyFraction(left, right)
         if (simplified != null) {
-            Log.d("Simplifier", "  约分: $left/$right → $simplified")
             return simplified
         }
 
-        Log.d("Simplifier", "  无简化，保持除法")
         return MathNode.BinaryOp(Operator.DIVIDE, left, right)
     }
 
@@ -675,15 +675,9 @@ class ExpressionSimplifier {
         val numBase = extractBase(numerator)
         val denBase = extractBase(denominator)
 
-        Log.d("Simplifier", "  分子系数: $numCoeff, 底数: $numBase")
-        Log.d("Simplifier", "  分母系数: $denCoeff, 底数: $denBase")
-
         val coeffGcd = gcd(abs(numCoeff), abs(denCoeff))
         val newNumCoeff = numCoeff / coeffGcd
         val newDenCoeff = denCoeff / coeffGcd
-
-        Log.d("Simplifier", "  GCD: $coeffGcd")
-        Log.d("Simplifier", "  约分后系数: $newNumCoeff / $newDenCoeff")
 
         val (numPowerBase, numExponent) = extractBaseAndExponent(numBase)
         val (denPowerBase, denExponent) = extractBaseAndExponent(denBase)
@@ -792,6 +786,13 @@ class ExpressionSimplifier {
     }
 
     /**
+     * 标准化简（标准多项式形式）
+     */
+    private fun simplifyStandard(node: MathNode): MathNode {
+        return simplifyExpanded(node)
+    }
+
+    /**
      * 合并相同底数的幂
      */
     private fun mergePowerFactors(factors: List<MathNode>): List<MathNode> {
@@ -802,7 +803,7 @@ class ExpressionSimplifier {
 
         for (factor in factors) {
             val (base, exponent) = extractBaseAndExponent(factor)
-            val baseKey = base.toString()
+            val baseKey = normalizeBase(base)
 
             if (base is MathNode.Number && abs(base.value - 1.0) < EPSILON) {
                 continue
@@ -821,7 +822,7 @@ class ExpressionSimplifier {
             if (abs(totalExponent) < EPSILON) continue
 
             val base = factors.firstOrNull {
-                extractBaseAndExponent(it).first.toString() == baseKey
+                normalizeBase(extractBaseAndExponent(it).first) == baseKey
             }?.let { extractBaseAndExponent(it).first } ?: continue
 
             result.add(when {

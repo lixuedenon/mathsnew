@@ -61,9 +61,23 @@ class CalculusGraphView @JvmOverloads constructor(
         isAntiAlias = true
     }
 
-    private val textPaint = Paint().apply {
+    private val labelTextPaint = Paint().apply {
+        color = Color.parseColor("#FF9800")
+        textSize = 28f
+        isAntiAlias = true
+        textAlign = Paint.Align.LEFT
+    }
+
+    private val legendTextPaint = Paint().apply {
         color = Color.BLACK
-        textSize = 24f
+        textSize = 32f
+        isAntiAlias = true
+        textAlign = Paint.Align.LEFT
+    }
+
+    private val legendLinePaint = Paint().apply {
+        strokeWidth = 4f
+        style = Paint.Style.STROKE
         isAntiAlias = true
     }
 
@@ -97,6 +111,7 @@ class CalculusGraphView @JvmOverloads constructor(
         drawAxes(canvas)
         drawCurves(canvas, data)
         drawCriticalPoints(canvas, data)
+        drawLegend(canvas)
     }
 
     private fun drawGrid(canvas: Canvas) {
@@ -189,6 +204,17 @@ class CalculusGraphView @JvmOverloads constructor(
             }
 
             canvas.drawCircle(screenPoint.x, screenPoint.y, 8f, paint)
+
+            val label = when {
+                point.isMaximum -> "极大值(%.2f, %.2f)".format(point.x, point.y)
+                point.isMinimum -> "极小值(%.2f, %.2f)".format(point.x, point.y)
+                else -> "驻点(%.2f, %.2f)".format(point.x, point.y)
+            }
+
+            val textX = screenPoint.x + 12f
+            val textY = screenPoint.y - 12f
+
+            canvas.drawText(label, textX, textY, labelTextPaint)
         }
 
         for (point in data.inflectionPoints) {
@@ -201,7 +227,34 @@ class CalculusGraphView @JvmOverloads constructor(
             }
 
             canvas.drawCircle(screenPoint.x, screenPoint.y, 6f, paint)
+
+            val label = "拐点(%.2f, %.2f)".format(point.x, point.y)
+            val textX = screenPoint.x + 12f
+            val textY = screenPoint.y - 12f
+
+            canvas.drawText(label, textX, textY, labelTextPaint)
         }
+    }
+
+    private fun drawLegend(canvas: Canvas) {
+        val padding = 50f
+        val width = width.toFloat() - 2 * padding
+        val startX = padding + width - 150f
+        val startY = padding + 30f
+        val lineLength = 40f
+        val lineSpacing = 40f
+
+        legendLinePaint.color = Color.parseColor("#2196F3")
+        canvas.drawLine(startX, startY, startX + lineLength, startY, legendLinePaint)
+        canvas.drawText("f(x)", startX + lineLength + 10f, startY + 10f, legendTextPaint)
+
+        legendLinePaint.color = Color.parseColor("#4CAF50")
+        canvas.drawLine(startX, startY + lineSpacing, startX + lineLength, startY + lineSpacing, legendLinePaint)
+        canvas.drawText("f'(x)", startX + lineLength + 10f, startY + lineSpacing + 10f, legendTextPaint)
+
+        legendLinePaint.color = Color.parseColor("#FF9800")
+        canvas.drawLine(startX, startY + 2 * lineSpacing, startX + lineLength, startY + 2 * lineSpacing, legendLinePaint)
+        canvas.drawText("f''(x)", startX + lineLength + 10f, startY + 2 * lineSpacing + 10f, legendTextPaint)
     }
 
     private fun toScreenCoordinates(x: Float, y: Float): PointF {
