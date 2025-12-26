@@ -83,7 +83,8 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="16dp"
                     android:minHeight="400dp"
-                    android:background="@color/display_background" />
+                    android:background="@color/display_background"
+                    android:visibility="gone" />
 
             </LinearLayout>
 

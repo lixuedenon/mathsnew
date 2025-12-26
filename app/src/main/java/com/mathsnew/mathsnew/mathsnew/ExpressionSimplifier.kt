@@ -1,5 +1,5 @@
 // app/src/main/java/com/mathsnew/mathsnew/ExpressionSimplifier.kt
-// 表达式简化器（完整版：同类项合并 + 分数约分 + 幂合并）
+// 表达式简化器（多形式版本）
 
 package com.mathsnew.mathsnew
 
@@ -10,84 +10,142 @@ import kotlin.math.round
 /**
  * 表达式简化器
  *
+ * 提供两种化简策略：
+ * 1. 因式化简（FACTORED）：保留有意义的因式结构，只展开数字括号
+ * 2. 展开化简（EXPANDED）：完全展开，合并所有同类项
+ *
  * 化简原则：
  * ✅ 消除冗余（0+x, 1×x）
  * ✅ 合并纯数字运算
  * ✅ 标准化负数表示
- * ✅ 展开嵌套乘法并合并数字系数
- * ✅ 合并同类项（6x + 6x → 12x）
+ * ✅ 浮点数容差处理
+ *
+ * 因式化简额外规则：
+ * ✅ 只展开数字×括号（2(x+1) → 2x+2）
+ * ✅ 保留因式×因式（(x+1)(x+2) 不变）
+ * ✅ 合并相同项（2x + 3x → 5x）
+ *
+ * 展开化简额外规则：
+ * ✅ 展开所有括号
+ * ✅ 全面合并同类项（2x+3x+4x → 9x）
  * ✅ 分数约分（6x/4 → 3x/2）
  * ✅ 幂的合并（x × x → x²）
- * ✅ 双重负号消除（-(-x) → x）
- * ❌ 不展开分配律
- * ❌ 不因式分解
  */
 class ExpressionSimplifier {
 
-    fun simplify(node: MathNode): MathNode {
+    companion object {
+        private const val EPSILON = 1e-10
+    }
+
+    /**
+     * 生成多种化简形式
+     *
+     * @param node 待化简的AST节点
+     * @return 包含多种形式的SimplificationForms对象
+     */
+    fun simplifyToMultipleForms(node: MathNode): SimplificationForms {
+        val forms = mutableListOf<SimplifiedForm>()
+
+        val factored = simplifyFactored(node)
+        forms.add(SimplifiedForm(
+            expression = factored,
+            type = SimplificationType.FACTORED
+        ))
+
+        val expanded = simplifyExpanded(node)
+        forms.add(SimplifiedForm(
+            expression = expanded,
+            type = SimplificationType.EXPANDED
+        ))
+
+        return SimplificationForms(forms)
+    }
+
+    /**
+     * 因式化简（保留结构）
+     *
+     * 只展开数字×括号，保留其他因式结构
+     *
+     * @param node 待化简的AST节点
+     * @return 化简后的AST节点
+     */
+    private fun simplifyFactored(node: MathNode): MathNode {
         var current = node
         var previous: MathNode
         var iterations = 0
-        val maxIterations = 15  // 增加迭代次数
+        val maxIterations = 15
 
         do {
             previous = current
-            current = simplifyOnce(current)
+            current = simplifyFactoredOnce(current)
             iterations++
         } while (current != previous && iterations < maxIterations)
 
         return current
     }
 
-    private fun simplifyOnce(node: MathNode): MathNode {
+    /**
+     * 因式化简单轮迭代
+     */
+    private fun simplifyFactoredOnce(node: MathNode): MathNode {
         return when (node) {
             is MathNode.Number -> node
             is MathNode.Variable -> node
             is MathNode.Function -> {
-                MathNode.Function(node.name, simplifyOnce(node.argument))
+                MathNode.Function(node.name, simplifyFactoredOnce(node.argument))
             }
             is MathNode.BinaryOp -> {
-                val left = simplifyOnce(node.left)
-                val right = simplifyOnce(node.right)
-                simplifyBinaryOp(node.operator, left, right)
+                val left = simplifyFactoredOnce(node.left)
+                val right = simplifyFactoredOnce(node.right)
+                simplifyBinaryOpFactored(node.operator, left, right)
             }
-        }
-    }
-
-    private fun simplifyBinaryOp(op: Operator, left: MathNode, right: MathNode): MathNode {
-        return when (op) {
-            Operator.ADD -> simplifyAddition(left, right)
-            Operator.SUBTRACT -> simplifySubtraction(left, right)
-            Operator.MULTIPLY -> simplifyMultiplication(left, right)
-            Operator.DIVIDE -> simplifyDivision(left, right)
-            Operator.POWER -> simplifyPower(left, right)
         }
     }
 
     /**
-     * 加法化简（支持同类项合并）
+     * 二元运算符化简（因式模式）
      */
-    private fun simplifyAddition(left: MathNode, right: MathNode): MathNode {
-        // 0 + x = x
-        if (left is MathNode.Number && left.value == 0.0) return right
-        if (right is MathNode.Number && right.value == 0.0) return left
+    private fun simplifyBinaryOpFactored(
+        op: Operator,
+        left: MathNode,
+        right: MathNode
+    ): MathNode {
+        return when (op) {
+            Operator.ADD -> simplifyAdditionFactored(left, right)
+            Operator.SUBTRACT -> simplifySubtractionFactored(left, right)
+            Operator.MULTIPLY -> simplifyMultiplicationFactored(left, right)
+            Operator.DIVIDE -> simplifyDivisionFactored(left, right)
+            Operator.POWER -> simplifyPowerFactored(left, right)
+        }
+    }
 
-        // 数字相加
+    /**
+     * 加法化简（因式模式）
+     *
+     * 只合并完全相同底数的项，不展开
+     */
+    private fun simplifyAdditionFactored(left: MathNode, right: MathNode): MathNode {
+        if (left is MathNode.Number && abs(left.value) < EPSILON) return right
+        if (right is MathNode.Number && abs(right.value) < EPSILON) return left
+
         if (left is MathNode.Number && right is MathNode.Number) {
             return MathNode.Number(left.value + right.value)
         }
 
-        // 同类项合并
+        if (left == right) {
+            return MathNode.BinaryOp(Operator.MULTIPLY, MathNode.Number(2.0), left)
+        }
+
         val leftCoeff = extractCoefficient(left)
         val rightCoeff = extractCoefficient(right)
         val leftBase = extractBase(left)
         val rightBase = extractBase(right)
 
-        if (areEqualBases(leftBase, rightBase)) {
+        if (leftBase.toString() == rightBase.toString()) {
             val newCoeff = leftCoeff + rightCoeff
             return when {
-                newCoeff == 0.0 -> MathNode.Number(0.0)
-                newCoeff == 1.0 -> leftBase
+                abs(newCoeff) < EPSILON -> MathNode.Number(0.0)
+                abs(newCoeff - 1.0) < EPSILON -> leftBase
                 else -> MathNode.BinaryOp(Operator.MULTIPLY, MathNode.Number(newCoeff), leftBase)
             }
         }
@@ -96,51 +154,34 @@ class ExpressionSimplifier {
     }
 
     /**
-     * 减法化简（支持同类项合并）
+     * 减法化简（因式模式）
      */
-    private fun simplifySubtraction(left: MathNode, right: MathNode): MathNode {
-        // x - 0 = x
-        if (right is MathNode.Number && right.value == 0.0) return left
+    private fun simplifySubtractionFactored(left: MathNode, right: MathNode): MathNode {
+        if (right is MathNode.Number && abs(right.value) < EPSILON) return left
 
-        // 0 - x = -x
-        if (left is MathNode.Number && left.value == 0.0) {
-            return MathNode.BinaryOp(
-                Operator.MULTIPLY,
-                MathNode.Number(-1.0),
-                right
-            )
+        if (left is MathNode.Number && abs(left.value) < EPSILON) {
+            return MathNode.BinaryOp(Operator.MULTIPLY, MathNode.Number(-1.0), right)
         }
 
-        // 数字相减
         if (left is MathNode.Number && right is MathNode.Number) {
             return MathNode.Number(left.value - right.value)
         }
 
-        // x - x = 0
         if (left == right) {
             return MathNode.Number(0.0)
         }
 
-        // 双重负号：x - (-y) = x + y
-        if (right is MathNode.BinaryOp &&
-            right.operator == Operator.MULTIPLY &&
-            right.left is MathNode.Number &&
-            right.left.value == -1.0) {
-            return simplifyAddition(left, right.right)
-        }
-
-        // 同类项相减
         val leftCoeff = extractCoefficient(left)
         val rightCoeff = extractCoefficient(right)
         val leftBase = extractBase(left)
         val rightBase = extractBase(right)
 
-        if (areEqualBases(leftBase, rightBase)) {
+        if (leftBase.toString() == rightBase.toString()) {
             val newCoeff = leftCoeff - rightCoeff
             return when {
-                newCoeff == 0.0 -> MathNode.Number(0.0)
-                newCoeff == 1.0 -> leftBase
-                newCoeff == -1.0 -> MathNode.BinaryOp(
+                abs(newCoeff) < EPSILON -> MathNode.Number(0.0)
+                abs(newCoeff - 1.0) < EPSILON -> leftBase
+                abs(newCoeff + 1.0) < EPSILON -> MathNode.BinaryOp(
                     Operator.MULTIPLY,
                     MathNode.Number(-1.0),
                     leftBase
@@ -153,50 +194,51 @@ class ExpressionSimplifier {
     }
 
     /**
-     * 乘法化简（增强版：支持幂的合并）
+     * 乘法化简（因式模式）
+     *
+     * 只展开数字×括号，保留因式×因式
      */
-    private fun simplifyMultiplication(left: MathNode, right: MathNode): MathNode {
-        // 0 × x = 0
-        if (left is MathNode.Number && left.value == 0.0) return MathNode.Number(0.0)
-        if (right is MathNode.Number && right.value == 0.0) return MathNode.Number(0.0)
+    private fun simplifyMultiplicationFactored(left: MathNode, right: MathNode): MathNode {
+        if (left is MathNode.Number && abs(left.value) < EPSILON) return MathNode.Number(0.0)
+        if (right is MathNode.Number && abs(right.value) < EPSILON) return MathNode.Number(0.0)
 
-        // 1 × x = x
-        if (left is MathNode.Number && left.value == 1.0) return right
-        if (right is MathNode.Number && right.value == 1.0) return left
+        if (left is MathNode.Number && abs(left.value - 1.0) < EPSILON) return right
+        if (right is MathNode.Number && abs(right.value - 1.0) < EPSILON) return left
 
-        // 双重负号：(-1) × (-1) × x = x
-        // 这个由数字合并自动处理
-
-        // 展开嵌套乘法，收集所有因子
-        val allFactors = collectMultiplicationFactors(left) + collectMultiplicationFactors(right)
-
-        // 分离数字因子和非数字因子
-        val numberFactors = mutableListOf<Double>()
-        val otherFactors = mutableListOf<MathNode>()
-
-        for (factor in allFactors) {
-            if (factor is MathNode.Number) {
-                numberFactors.add(factor.value)
-            } else {
-                otherFactors.add(factor)
-            }
+        if (left is MathNode.Number && abs(left.value + 1.0) < EPSILON) {
+            return MathNode.BinaryOp(Operator.SUBTRACT, MathNode.Number(0.0), right)
+        }
+        if (right is MathNode.Number && abs(right.value + 1.0) < EPSILON) {
+            return MathNode.BinaryOp(Operator.SUBTRACT, MathNode.Number(0.0), left)
         }
 
-        // 合并所有数字
+        if (left is MathNode.Number && isAdditionOrSubtraction(right)) {
+            return expandDistributiveFactored(left, right)
+        }
+        if (right is MathNode.Number && isAdditionOrSubtraction(left)) {
+            return expandDistributiveFactored(right, left)
+        }
+
+        if (left is MathNode.Number && right is MathNode.Number) {
+            return MathNode.Number(left.value * right.value)
+        }
+
+        val allFactors = collectMultiplicationFactors(left) + collectMultiplicationFactors(right)
+        val numberFactors = allFactors.filterIsInstance<MathNode.Number>()
+        val otherFactors = allFactors.filter { it !is MathNode.Number }
+
         val coefficient = if (numberFactors.isEmpty()) {
             1.0
         } else {
-            numberFactors.reduce { acc, d -> acc * d }
+            numberFactors.map { it.value }.reduce { acc, d -> acc * d }
         }
 
-        // 合并相同底数的幂：x × x → x², x² × x → x³
         val mergedFactors = mergePowerFactors(otherFactors)
 
-        // 根据系数值构建结果
         return when {
-            coefficient == 0.0 -> MathNode.Number(0.0)
+            abs(coefficient) < EPSILON -> MathNode.Number(0.0)
 
-            coefficient == 1.0 -> {
+            abs(coefficient - 1.0) < EPSILON -> {
                 when {
                     mergedFactors.isEmpty() -> MathNode.Number(1.0)
                     mergedFactors.size == 1 -> mergedFactors[0]
@@ -204,7 +246,7 @@ class ExpressionSimplifier {
                 }
             }
 
-            coefficient == -1.0 -> {
+            abs(coefficient + 1.0) < EPSILON -> {
                 val product = when {
                     mergedFactors.isEmpty() -> MathNode.Number(1.0)
                     mergedFactors.size == 1 -> mergedFactors[0]
@@ -216,133 +258,404 @@ class ExpressionSimplifier {
             mergedFactors.isEmpty() -> MathNode.Number(coefficient)
 
             else -> {
-                val product = if (mergedFactors.size == 1) {
-                    mergedFactors[0]
+                val product = if (mergedFactors.size == 1) mergedFactors[0]
+                             else buildMultiplication(mergedFactors)
+
+                if (abs(coefficient - 1.0) < EPSILON) {
+                    product
+                } else if (abs(coefficient + 1.0) < EPSILON) {
+                    MathNode.BinaryOp(Operator.SUBTRACT, MathNode.Number(0.0), product)
                 } else {
-                    buildMultiplication(mergedFactors)
+                    MathNode.BinaryOp(Operator.MULTIPLY, MathNode.Number(coefficient), product)
                 }
-                MathNode.BinaryOp(Operator.MULTIPLY, MathNode.Number(coefficient), product)
             }
         }
     }
 
     /**
-     * 合并相同底数的幂
-     *
-     * 例如：
-     * - [x, x] → [x²]
-     * - [x², x] → [x³]
-     * - [sin(x), sin(x)] → [sin²(x)]
+     * 判断节点是否是加法或减法
      */
-    private fun mergePowerFactors(factors: List<MathNode>): List<MathNode> {
-        if (factors.isEmpty()) return factors
+    private fun isAdditionOrSubtraction(node: MathNode): Boolean {
+        return node is MathNode.BinaryOp &&
+               (node.operator == Operator.ADD || node.operator == Operator.SUBTRACT)
+    }
 
-        // 统计每个底数的指数
-        val baseExponents = mutableMapOf<String, Double>()
-        val nonPowerFactors = mutableListOf<MathNode>()
+    /**
+     * 展开分配律（因式模式）
+     *
+     * 只展开数字×(加减法)
+     */
+    private fun expandDistributiveFactored(
+        coefficient: MathNode.Number,
+        expr: MathNode
+    ): MathNode {
+        if (expr !is MathNode.BinaryOp) {
+            return MathNode.BinaryOp(Operator.MULTIPLY, coefficient, expr)
+        }
 
-        for (factor in factors) {
-            val (base, exponent) = extractBaseAndExponent(factor)
+        return when (expr.operator) {
+            Operator.ADD -> {
+                val left = simplifyMultiplicationFactored(coefficient, expr.left)
+                val right = simplifyMultiplicationFactored(coefficient, expr.right)
+                simplifyAdditionFactored(left, right)
+            }
+            Operator.SUBTRACT -> {
+                val left = simplifyMultiplicationFactored(coefficient, expr.left)
+                val right = simplifyMultiplicationFactored(coefficient, expr.right)
+                simplifySubtractionFactored(left, right)
+            }
+            else -> MathNode.BinaryOp(Operator.MULTIPLY, coefficient, expr)
+        }
+    }
+
+    /**
+     * 除法化简（因式模式）
+     */
+    private fun simplifyDivisionFactored(left: MathNode, right: MathNode): MathNode {
+        if (right is MathNode.Number && abs(right.value - 1.0) < EPSILON) {
+            return left
+        }
+
+        if (left is MathNode.Number && abs(left.value) < EPSILON) {
+            return MathNode.Number(0.0)
+        }
+
+        if (left is MathNode.Number && right is MathNode.Number) {
+            return MathNode.Number(left.value / right.value)
+        }
+
+        if (left == right) {
+            return MathNode.Number(1.0)
+        }
+
+        return MathNode.BinaryOp(Operator.DIVIDE, left, right)
+    }
+
+    /**
+     * 幂运算化简（因式模式）
+     */
+    private fun simplifyPowerFactored(left: MathNode, right: MathNode): MathNode {
+        if (right is MathNode.Number && abs(right.value) < EPSILON) {
+            return MathNode.Number(1.0)
+        }
+
+        if (right is MathNode.Number && abs(right.value - 1.0) < EPSILON) {
+            return left
+        }
+
+        if (left is MathNode.Number && abs(left.value - 1.0) < EPSILON) {
+            return MathNode.Number(1.0)
+        }
+
+        if (left is MathNode.Number && right is MathNode.Number) {
+            return MathNode.Number(Math.pow(left.value, right.value))
+        }
+
+        if (left is MathNode.BinaryOp &&
+            left.operator == Operator.POWER &&
+            left.right is MathNode.Number &&
+            right is MathNode.Number) {
+            val newExponent = left.right.value * right.value
+            return MathNode.BinaryOp(Operator.POWER, left.left, MathNode.Number(newExponent))
+        }
+
+        return MathNode.BinaryOp(Operator.POWER, left, right)
+    }
+
+    /**
+     * 展开化简（完全展开）
+     *
+     * 展开所有括号，合并所有同类项
+     *
+     * @param node 待化简的AST节点
+     * @return 化简后的AST节点
+     */
+    private fun simplifyExpanded(node: MathNode): MathNode {
+        var current = node
+        var previous: MathNode
+        var iterations = 0
+        val maxIterations = 20
+
+        do {
+            previous = current
+            current = simplifyExpandedOnce(current)
+            iterations++
+        } while (current != previous && iterations < maxIterations)
+
+        return current
+    }
+
+    /**
+     * 展开化简单轮迭代
+     */
+    private fun simplifyExpandedOnce(node: MathNode): MathNode {
+        return when (node) {
+            is MathNode.Number -> node
+            is MathNode.Variable -> node
+            is MathNode.Function -> {
+                MathNode.Function(node.name, simplifyExpandedOnce(node.argument))
+            }
+            is MathNode.BinaryOp -> {
+                val left = simplifyExpandedOnce(node.left)
+                val right = simplifyExpandedOnce(node.right)
+                simplifyBinaryOpExpanded(node.operator, left, right)
+            }
+        }
+    }
+
+    /**
+     * 二元运算符化简（展开模式）
+     */
+    private fun simplifyBinaryOpExpanded(
+        op: Operator,
+        left: MathNode,
+        right: MathNode
+    ): MathNode {
+        return when (op) {
+            Operator.ADD -> simplifyAdditionExpanded(left, right)
+            Operator.SUBTRACT -> simplifySubtractionExpanded(left, right)
+            Operator.MULTIPLY -> simplifyMultiplicationExpanded(left, right)
+            Operator.DIVIDE -> simplifyDivisionExpanded(left, right)
+            Operator.POWER -> simplifyPowerFactored(left, right)
+        }
+    }
+
+    /**
+     * 加法化简（展开模式）
+     *
+     * 收集所有加法项并合并同类项
+     */
+    private fun simplifyAdditionExpanded(left: MathNode, right: MathNode): MathNode {
+        val allTerms = collectAdditionTerms(left) + collectAdditionTerms(right)
+        val mergedTerms = mergeTerms(allTerms)
+
+        if (mergedTerms.size == 1) {
+            return mergedTerms[0]
+        }
+
+        return buildAddition(mergedTerms)
+    }
+
+    /**
+     * 收集所有加法项（展平嵌套结构）
+     */
+    private fun collectAdditionTerms(node: MathNode): List<MathNode> {
+        return when (node) {
+            is MathNode.BinaryOp -> {
+                if (node.operator == Operator.ADD) {
+                    collectAdditionTerms(node.left) + collectAdditionTerms(node.right)
+                } else {
+                    listOf(node)
+                }
+            }
+            else -> listOf(node)
+        }
+    }
+
+    /**
+     * 合并同类项
+     */
+    private fun mergeTerms(terms: List<MathNode>): List<MathNode> {
+        if (terms.isEmpty()) return listOf(MathNode.Number(0.0))
+        if (terms.size == 1) return terms
+
+        val termsByBase = mutableMapOf<String, MutableList<MathNode>>()
+
+        for (term in terms) {
+            val base = extractBase(term)
             val baseKey = base.toString()
 
-            if (base is MathNode.Number && base.value == 1.0) {
-                // 底数是1，忽略
-                continue
+            if (!termsByBase.containsKey(baseKey)) {
+                termsByBase[baseKey] = mutableListOf()
             }
-
-            if (canMergePower(base)) {
-                baseExponents[baseKey] = (baseExponents[baseKey] ?: 0.0) + exponent
-            } else {
-                nonPowerFactors.add(factor)
-            }
+            termsByBase[baseKey]!!.add(term)
         }
 
-        // 重建因子列表
         val result = mutableListOf<MathNode>()
 
-        for ((baseKey, totalExponent) in baseExponents) {
-            if (totalExponent == 0.0) continue
+        for ((_, groupTerms) in termsByBase) {
+            val base = extractBase(groupTerms[0])
+            val totalCoefficient = groupTerms.sumOf { extractCoefficient(it) }
 
-            // 找到对应的底数
-            val base = factors.firstOrNull {
-                extractBaseAndExponent(it).first.toString() == baseKey
-            }?.let { extractBaseAndExponent(it).first } ?: continue
-
-            result.add(when {
-                totalExponent == 1.0 -> base
-                else -> MathNode.BinaryOp(Operator.POWER, base, MathNode.Number(totalExponent))
-            })
+            when {
+                abs(totalCoefficient) < EPSILON -> {
+                }
+                base is MathNode.Number && abs(base.value - 1.0) < EPSILON -> {
+                    result.add(MathNode.Number(totalCoefficient))
+                }
+                abs(totalCoefficient - 1.0) < EPSILON -> {
+                    result.add(base)
+                }
+                else -> {
+                    result.add(MathNode.BinaryOp(Operator.MULTIPLY, MathNode.Number(totalCoefficient), base))
+                }
+            }
         }
 
-        result.addAll(nonPowerFactors)
+        return if (result.isEmpty()) listOf(MathNode.Number(0.0)) else result
+    }
+
+    /**
+     * 构建加法表达式
+     */
+    private fun buildAddition(terms: List<MathNode>): MathNode {
+        if (terms.isEmpty()) return MathNode.Number(0.0)
+        if (terms.size == 1) return terms[0]
+
+        var result = terms[0]
+        for (i in 1 until terms.size) {
+            result = MathNode.BinaryOp(Operator.ADD, result, terms[i])
+        }
         return result
     }
 
     /**
-     * 提取底数和指数
-     *
-     * 例如：
-     * - x → (x, 1)
-     * - x² → (x, 2)
-     * - sin(x) → (sin(x), 1)
+     * 减法化简（展开模式）
      */
-    private fun extractBaseAndExponent(node: MathNode): Pair<MathNode, Double> {
-        return when (node) {
-            is MathNode.BinaryOp -> {
-                if (node.operator == Operator.POWER && node.right is MathNode.Number) {
-                    Pair(node.left, node.right.value)
-                } else {
-                    Pair(node, 1.0)
+    private fun simplifySubtractionExpanded(left: MathNode, right: MathNode): MathNode {
+        if (right is MathNode.Number && abs(right.value) < EPSILON) return left
+
+        if (left is MathNode.Number && abs(left.value) < EPSILON) {
+            return MathNode.BinaryOp(Operator.MULTIPLY, MathNode.Number(-1.0), right)
+        }
+
+        if (left is MathNode.Number && right is MathNode.Number) {
+            return MathNode.Number(left.value - right.value)
+        }
+
+        if (left == right) {
+            return MathNode.Number(0.0)
+        }
+
+        val negativeRight = MathNode.BinaryOp(Operator.MULTIPLY, MathNode.Number(-1.0), right)
+        return simplifyAdditionExpanded(left, negativeRight)
+    }
+
+    /**
+     * 乘法化简（展开模式）
+     */
+    private fun simplifyMultiplicationExpanded(left: MathNode, right: MathNode): MathNode {
+        if (left is MathNode.Number && abs(left.value) < EPSILON) return MathNode.Number(0.0)
+        if (right is MathNode.Number && abs(right.value) < EPSILON) return MathNode.Number(0.0)
+
+        if (left is MathNode.Number && abs(left.value - 1.0) < EPSILON) return right
+        if (right is MathNode.Number && abs(right.value - 1.0) < EPSILON) return left
+
+        if (left is MathNode.Number && abs(left.value + 1.0) < EPSILON) {
+            return MathNode.BinaryOp(Operator.SUBTRACT, MathNode.Number(0.0), right)
+        }
+        if (right is MathNode.Number && abs(right.value + 1.0) < EPSILON) {
+            return MathNode.BinaryOp(Operator.SUBTRACT, MathNode.Number(0.0), left)
+        }
+
+        if (left is MathNode.Number && isAdditionOrSubtraction(right)) {
+            return expandDistributiveExpanded(left, right)
+        }
+        if (right is MathNode.Number && isAdditionOrSubtraction(left)) {
+            return expandDistributiveExpanded(right, left)
+        }
+
+        val allFactors = collectMultiplicationFactors(left) + collectMultiplicationFactors(right)
+        val numberFactors = allFactors.filterIsInstance<MathNode.Number>()
+        val otherFactors = allFactors.filter { it !is MathNode.Number }
+
+        val coefficient = if (numberFactors.isEmpty()) {
+            1.0
+        } else {
+            numberFactors.map { it.value }.reduce { acc, d -> acc * d }
+        }
+
+        val mergedFactors = mergePowerFactors(otherFactors)
+
+        return when {
+            abs(coefficient) < EPSILON -> MathNode.Number(0.0)
+
+            abs(coefficient - 1.0) < EPSILON -> {
+                when {
+                    mergedFactors.isEmpty() -> MathNode.Number(1.0)
+                    mergedFactors.size == 1 -> mergedFactors[0]
+                    else -> buildMultiplication(mergedFactors)
                 }
             }
-            else -> Pair(node, 1.0)
+
+            abs(coefficient + 1.0) < EPSILON -> {
+                val product = when {
+                    mergedFactors.isEmpty() -> MathNode.Number(1.0)
+                    mergedFactors.size == 1 -> mergedFactors[0]
+                    else -> buildMultiplication(mergedFactors)
+                }
+                MathNode.BinaryOp(Operator.SUBTRACT, MathNode.Number(0.0), product)
+            }
+
+            mergedFactors.isEmpty() -> MathNode.Number(coefficient)
+
+            else -> {
+                val product = if (mergedFactors.size == 1) mergedFactors[0]
+                             else buildMultiplication(mergedFactors)
+
+                if (abs(coefficient - 1.0) < EPSILON) {
+                    product
+                } else if (abs(coefficient + 1.0) < EPSILON) {
+                    MathNode.BinaryOp(Operator.SUBTRACT, MathNode.Number(0.0), product)
+                } else {
+                    MathNode.BinaryOp(Operator.MULTIPLY, MathNode.Number(coefficient), product)
+                }
+            }
         }
     }
 
     /**
-     * 判断是否可以合并幂
-     *
-     * 只有简单的变量和函数可以合并
+     * 展开分配律（展开模式）
      */
-    private fun canMergePower(base: MathNode): Boolean {
-        return when (base) {
-            is MathNode.Variable -> true
-            is MathNode.Function -> true
-            else -> false
+    private fun expandDistributiveExpanded(
+        coefficient: MathNode.Number,
+        expr: MathNode
+    ): MathNode {
+        if (expr !is MathNode.BinaryOp) {
+            return MathNode.BinaryOp(Operator.MULTIPLY, coefficient, expr)
+        }
+
+        return when (expr.operator) {
+            Operator.ADD -> {
+                val left = simplifyMultiplicationExpanded(coefficient, expr.left)
+                val right = simplifyMultiplicationExpanded(coefficient, expr.right)
+                simplifyAdditionExpanded(left, right)
+            }
+            Operator.SUBTRACT -> {
+                val left = simplifyMultiplicationExpanded(coefficient, expr.left)
+                val right = simplifyMultiplicationExpanded(coefficient, expr.right)
+                simplifySubtractionExpanded(left, right)
+            }
+            else -> MathNode.BinaryOp(Operator.MULTIPLY, coefficient, expr)
         }
     }
 
     /**
-     * 除法化简（增强版：支持约分）
+     * 除法化简（展开模式）
      */
-    private fun simplifyDivision(left: MathNode, right: MathNode): MathNode {
+    private fun simplifyDivisionExpanded(left: MathNode, right: MathNode): MathNode {
         Log.d("Simplifier", "简化除法: $left / $right")
 
-        // x / 1 = x
-        if (right is MathNode.Number && right.value == 1.0) {
+        if (right is MathNode.Number && abs(right.value - 1.0) < EPSILON) {
             Log.d("Simplifier", "  规则: x/1 = x")
             return left
         }
 
-        // 0 / x = 0
-        if (left is MathNode.Number && left.value == 0.0) {
+        if (left is MathNode.Number && abs(left.value) < EPSILON) {
             Log.d("Simplifier", "  规则: 0/x = 0")
             return MathNode.Number(0.0)
         }
 
-        // 数字相除
         if (left is MathNode.Number && right is MathNode.Number) {
             Log.d("Simplifier", "  规则: 数字相除")
             return MathNode.Number(left.value / right.value)
         }
 
-        // x / x = 1
         if (left == right) {
             Log.d("Simplifier", "  规则: x/x = 1")
             return MathNode.Number(1.0)
         }
 
-        // 约分
         val simplified = simplifyFraction(left, right)
         if (simplified != null) {
             Log.d("Simplifier", "  约分: $left/$right → $simplified")
@@ -355,14 +668,8 @@ class ExpressionSimplifier {
 
     /**
      * 分数约分
-     *
-     * 处理以下情况：
-     * 1. 系数约分：6x/4 → 3x/2
-     * 2. 变量约分：(6x)/(2x) → 3
-     * 3. 幂约分：(6x²)/(2x) → 3x
      */
     private fun simplifyFraction(numerator: MathNode, denominator: MathNode): MathNode? {
-        // 提取分子分母的系数和底数
         val numCoeff = extractCoefficient(numerator)
         val denCoeff = extractCoefficient(denominator)
         val numBase = extractBase(numerator)
@@ -371,7 +678,6 @@ class ExpressionSimplifier {
         Log.d("Simplifier", "  分子系数: $numCoeff, 底数: $numBase")
         Log.d("Simplifier", "  分母系数: $denCoeff, 底数: $denBase")
 
-        // 计算系数的GCD并约分
         val coeffGcd = gcd(abs(numCoeff), abs(denCoeff))
         val newNumCoeff = numCoeff / coeffGcd
         val newDenCoeff = denCoeff / coeffGcd
@@ -379,22 +685,18 @@ class ExpressionSimplifier {
         Log.d("Simplifier", "  GCD: $coeffGcd")
         Log.d("Simplifier", "  约分后系数: $newNumCoeff / $newDenCoeff")
 
-        // 提取底数的指数
         val (numPowerBase, numExponent) = extractBaseAndExponent(numBase)
         val (denPowerBase, denExponent) = extractBaseAndExponent(denBase)
 
-        // 检查底数是否相同
         val basesEqual = numPowerBase.toString() == denPowerBase.toString()
 
         return when {
-            // 情况1：底数相同，可以约分指数
             basesEqual -> {
                 val resultExponent = numExponent - denExponent
 
                 when {
-                    // 完全约掉，只剩系数
-                    resultExponent == 0.0 -> {
-                        if (newDenCoeff == 1.0) {
+                    abs(resultExponent) < EPSILON -> {
+                        if (abs(newDenCoeff - 1.0) < EPSILON) {
                             MathNode.Number(newNumCoeff)
                         } else {
                             MathNode.BinaryOp(
@@ -405,36 +707,34 @@ class ExpressionSimplifier {
                         }
                     }
 
-                    // 分子指数更大：结果在分子
                     resultExponent > 0.0 -> {
-                        val resultBase = if (resultExponent == 1.0) {
+                        val resultBase = if (abs(resultExponent - 1.0) < EPSILON) {
                             numPowerBase
                         } else {
                             MathNode.BinaryOp(Operator.POWER, numPowerBase, MathNode.Number(resultExponent))
                         }
 
-                        val numeratorPart = if (newNumCoeff == 1.0) {
+                        val numeratorPart = if (abs(newNumCoeff - 1.0) < EPSILON) {
                             resultBase
                         } else {
                             MathNode.BinaryOp(Operator.MULTIPLY, MathNode.Number(newNumCoeff), resultBase)
                         }
 
-                        if (newDenCoeff == 1.0) {
+                        if (abs(newDenCoeff - 1.0) < EPSILON) {
                             numeratorPart
                         } else {
                             MathNode.BinaryOp(Operator.DIVIDE, numeratorPart, MathNode.Number(newDenCoeff))
                         }
                     }
 
-                    // 分母指数更大：结果在分母
                     else -> {
-                        val resultBase = if (resultExponent == -1.0) {
+                        val resultBase = if (abs(resultExponent + 1.0) < EPSILON) {
                             numPowerBase
                         } else {
                             MathNode.BinaryOp(Operator.POWER, numPowerBase, MathNode.Number(-resultExponent))
                         }
 
-                        val denominatorPart = if (newDenCoeff == 1.0) {
+                        val denominatorPart = if (abs(newDenCoeff - 1.0) < EPSILON) {
                             resultBase
                         } else {
                             MathNode.BinaryOp(Operator.MULTIPLY, MathNode.Number(newDenCoeff), resultBase)
@@ -449,15 +749,14 @@ class ExpressionSimplifier {
                 }
             }
 
-            // 情况2：底数不同，只约分系数
             coeffGcd > 1.0 -> {
-                val newNumerator = if (newNumCoeff == 1.0) {
+                val newNumerator = if (abs(newNumCoeff - 1.0) < EPSILON) {
                     numBase
                 } else {
                     MathNode.BinaryOp(Operator.MULTIPLY, MathNode.Number(newNumCoeff), numBase)
                 }
 
-                val newDenominator = if (newDenCoeff == 1.0) {
+                val newDenominator = if (abs(newDenCoeff - 1.0) < EPSILON) {
                     denBase
                 } else {
                     MathNode.BinaryOp(Operator.MULTIPLY, MathNode.Number(newDenCoeff), denBase)
@@ -466,17 +765,14 @@ class ExpressionSimplifier {
                 MathNode.BinaryOp(Operator.DIVIDE, newNumerator, newDenominator)
             }
 
-            // 无法约分
             else -> null
         }
     }
 
     /**
      * 计算最大公约数（GCD）
-     * 使用欧几里得算法
      */
     private fun gcd(a: Double, b: Double): Double {
-        // 转换为整数处理（假设都是整数或可以转为整数）
         val aInt = round(a).toLong()
         val bInt = round(b).toLong()
 
@@ -495,37 +791,74 @@ class ExpressionSimplifier {
         return x.toDouble()
     }
 
-    private fun simplifyPower(left: MathNode, right: MathNode): MathNode {
-        // x⁰ = 1
-        if (right is MathNode.Number && right.value == 0.0) {
-            return MathNode.Number(1.0)
+    /**
+     * 合并相同底数的幂
+     */
+    private fun mergePowerFactors(factors: List<MathNode>): List<MathNode> {
+        if (factors.isEmpty()) return factors
+
+        val baseExponents = mutableMapOf<String, Double>()
+        val nonPowerFactors = mutableListOf<MathNode>()
+
+        for (factor in factors) {
+            val (base, exponent) = extractBaseAndExponent(factor)
+            val baseKey = base.toString()
+
+            if (base is MathNode.Number && abs(base.value - 1.0) < EPSILON) {
+                continue
+            }
+
+            if (canMergePower(base)) {
+                baseExponents[baseKey] = (baseExponents[baseKey] ?: 0.0) + exponent
+            } else {
+                nonPowerFactors.add(factor)
+            }
         }
 
-        // x¹ = x
-        if (right is MathNode.Number && right.value == 1.0) {
-            return left
+        val result = mutableListOf<MathNode>()
+
+        for ((baseKey, totalExponent) in baseExponents) {
+            if (abs(totalExponent) < EPSILON) continue
+
+            val base = factors.firstOrNull {
+                extractBaseAndExponent(it).first.toString() == baseKey
+            }?.let { extractBaseAndExponent(it).first } ?: continue
+
+            result.add(when {
+                abs(totalExponent - 1.0) < EPSILON -> base
+                else -> MathNode.BinaryOp(Operator.POWER, base, MathNode.Number(totalExponent))
+            })
         }
 
-        // 1ⁿ = 1
-        if (left is MathNode.Number && left.value == 1.0) {
-            return MathNode.Number(1.0)
-        }
+        result.addAll(nonPowerFactors)
+        return result
+    }
 
-        // 数字的幂
-        if (left is MathNode.Number && right is MathNode.Number) {
-            return MathNode.Number(Math.pow(left.value, right.value))
+    /**
+     * 提取底数和指数
+     */
+    private fun extractBaseAndExponent(node: MathNode): Pair<MathNode, Double> {
+        return when (node) {
+            is MathNode.BinaryOp -> {
+                if (node.operator == Operator.POWER && node.right is MathNode.Number) {
+                    Pair(node.left, node.right.value)
+                } else {
+                    Pair(node, 1.0)
+                }
+            }
+            else -> Pair(node, 1.0)
         }
+    }
 
-        // (xᵃ)ᵇ = xᵃᵇ
-        if (left is MathNode.BinaryOp &&
-            left.operator == Operator.POWER &&
-            left.right is MathNode.Number &&
-            right is MathNode.Number) {
-            val newExponent = left.right.value * right.value
-            return MathNode.BinaryOp(Operator.POWER, left.left, MathNode.Number(newExponent))
+    /**
+     * 判断是否可以合并幂
+     */
+    private fun canMergePower(base: MathNode): Boolean {
+        return when (base) {
+            is MathNode.Variable -> true
+            is MathNode.Function -> true
+            else -> false
         }
-
-        return MathNode.BinaryOp(Operator.POWER, left, right)
     }
 
     /**
@@ -565,12 +898,8 @@ class ExpressionSimplifier {
     }
 
     /**
-     * 判断两个底数是否相等
+     * 收集所有乘法因子
      */
-    private fun areEqualBases(base1: MathNode, base2: MathNode): Boolean {
-        return base1.toString() == base2.toString()
-    }
-
     private fun collectMultiplicationFactors(node: MathNode): List<MathNode> {
         return when (node) {
             is MathNode.BinaryOp -> {
@@ -585,6 +914,9 @@ class ExpressionSimplifier {
         }
     }
 
+    /**
+     * 构建乘法表达式
+     */
     private fun buildMultiplication(factors: List<MathNode>): MathNode {
         if (factors.isEmpty()) return MathNode.Number(1.0)
         if (factors.size == 1) return factors[0]
