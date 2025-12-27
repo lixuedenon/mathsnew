@@ -19,7 +19,13 @@ import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
 import com.mathsnew.mathsnew.databinding.FragmentCalculusBinding
 import android.util.Log
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.mathsnew.mathsnew.calculus.graph.GraphEngine
+import com.mathsnew.mathsnew.newsimplified.CalculusEngineV2
+import com.mathsnew.mathsnew.newsimplified.CalculationResult as CalculationResultV2
 
 private enum class CharType {
     NUMBER, VARIABLE, OPERATOR, FUNCTION, PAREN, PLACEHOLDER
@@ -34,24 +40,30 @@ private data class CharInfo(
 
 class CalculusFragment : Fragment() {
 
-    private var _binding: FragmentCalculusBinding? = null
-    private val binding get() = _binding!!
-
-    private var currentExpression = ""
-    private val calculusEngine = CalculusEngine()
-    private val graphEngine = GraphEngine()
-    private val formatter = MathFormatter()
-
-    private var hasResult = false
-    private var blinkAnimator: ValueAnimator? = null
-
     companion object {
+        private const val USE_V2_ENGINE = true
+        private const val TAG = "CalculusFragment"
+
         private val COLOR_FUNCTION = Color.parseColor("#2196F3")
         private val COLOR_VARIABLE = Color.parseColor("#000000")
         private val COLOR_NUMBER = Color.parseColor("#F44336")
         private val COLOR_OPERATOR = Color.parseColor("#2E7D32")
         private val COLOR_PLACEHOLDER = Color.parseColor("#FF6600")
     }
+
+    private var _binding: FragmentCalculusBinding? = null
+    private val binding get() = _binding!!
+
+    private var currentExpression = ""
+
+    private val calculusEngineV2 = CalculusEngineV2()
+    private val calculusEngineV1 = CalculusEngine()
+
+    private val graphEngine = GraphEngine()
+    private val formatter = MathFormatter()
+
+    private var hasResult = false
+    private var blinkAnimator: ValueAnimator? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -337,98 +349,138 @@ class CalculusFragment : Fragment() {
     }
 
     private fun calculateDerivative() {
-        Log.d("CalculusFragment", "========================================")
-        Log.d("CalculusFragment", "===== calculateDerivative 被调用 =====")
-        Log.d("CalculusFragment", "currentExpression = '$currentExpression'")
-        Log.d("CalculusFragment", "currentExpression.length = ${currentExpression.length}")
-        Log.d("CalculusFragment", "hasResult = $hasResult")
+        Log.d(TAG, "========================================")
+        Log.d(TAG, "===== calculateDerivative 被调用 =====")
+        Log.d(TAG, "currentExpression = '$currentExpression'")
 
         if (currentExpression.isEmpty()) {
-            Log.d("CalculusFragment", "❌ 检查1失败: 表达式为空")
-            Toast.makeText(
-                requireContext(),
-                "请先输入表达式",
-                Toast.LENGTH_SHORT
-            ).show()
+            Toast.makeText(requireContext(), "请先输入表达式", Toast.LENGTH_SHORT).show()
             return
         }
-        Log.d("CalculusFragment", "✅ 检查1通过: 表达式不为空")
 
         if (currentExpression.contains("^n")) {
-            Log.d("CalculusFragment", "❌ 检查2失败: 包含占位符 ^n")
-            Toast.makeText(
-                requireContext(),
-                "请完成指数输入",
-                Toast.LENGTH_SHORT
-            ).show()
+            Toast.makeText(requireContext(), "请完成指数输入", Toast.LENGTH_SHORT).show()
             return
         }
-        Log.d("CalculusFragment", "✅ 检查2通过: 不包含占位符")
 
         if (hasResult) {
-            Log.d("CalculusFragment", "❌ 检查3失败: 已有结果，忽略重复计算")
             return
         }
-        Log.d("CalculusFragment", "✅ 检查3通过: 没有结果")
 
         stopBlinkAnimation()
-        Log.d("CalculusFragment", "✅ 已停止闪烁动画")
 
-        Log.d("CalculusFragment", "🚀 准备调用计算引擎...")
-        Log.d("CalculusFragment", "传入表达式: '$currentExpression'")
+        if (USE_V2_ENGINE) {
+            calculateWithV2Engine()
+        } else {
+            calculateWithV1Engine()
+        }
+    }
 
+    private fun calculateWithV2Engine() {
         try {
-            Log.d("CalculusFragment", "调用 calculusEngine.calculateDerivative()...")
-            when (val result = calculusEngine.calculateDerivative(currentExpression)) {
-                is CalculationResult.Success -> {
-                    Log.d("CalculusFragment", "✅ 计算成功!")
+            val startTime = System.currentTimeMillis()
+            Log.d(TAG, "使用 V2 引擎计算")
+
+            when (val result = calculusEngineV2.calculateDerivative(currentExpression)) {
+                is CalculationResultV2.Success -> {
+                    val calcTime = System.currentTimeMillis()
+                    Log.d(TAG, "✅ 计算成功! 耗时: ${calcTime - startTime}ms")
+
+                    // 立即显示结果
+                    Log.d(TAG, "⏱️ 开始显示结果...")
+                    val displayStartTime = System.currentTimeMillis()
 
                     appendMultiFormResultToDisplay(result)
+
+                    val displayEndTime = System.currentTimeMillis()
+                    Log.d(TAG, "⏱️ 显示结果完成! 耗时: ${displayEndTime - displayStartTime}ms")
+
                     hasResult = true
                     disableDerivativeButton()
 
-                    Log.d("CalculusFragment", "✅ 结果已显示")
+                    // 🚀 异步生成图形（不阻塞 UI）
+                    Log.d(TAG, "🚀 开始异步生成图形...")
+                    lifecycleScope.launch {
+                        val graphStartTime = System.currentTimeMillis()
 
-                    Log.d("CalculusFragment", "🎨 开始生成图像数据...")
-                    try {
-                        val graphData = graphEngine.generateGraphData(currentExpression)
-                        binding.graphView.setGraphData(graphData)
-                        binding.graphView.visibility = View.VISIBLE
-                        Log.d("CalculusFragment", "✅ 图像绘制完成")
-                    } catch (e: Exception) {
-                        Log.e("CalculusFragment", "❌ 绘图失败: ${e.message}", e)
-                        Toast.makeText(
-                            requireContext(),
-                            "绘图失败: ${e.message}",
-                            Toast.LENGTH_SHORT
-                        ).show()
+                        try {
+                            // 在后台线程生成图形数据
+                            val graphData = withContext(Dispatchers.Default) {
+                                graphEngine.generateGraphData(currentExpression)
+                            }
+
+                            // 回到主线程更新 UI
+                            binding.graphView.setGraphData(graphData)
+                            binding.graphView.visibility = View.VISIBLE
+
+                            val graphEndTime = System.currentTimeMillis()
+                            Log.d(TAG, "✅ 图形生成完成! 耗时: ${graphEndTime - graphStartTime}ms")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "❌ 绘图失败: ${e.message}", e)
+                        }
                     }
-                }
-                is CalculationResult.Error -> {
-                    Log.d("CalculusFragment", "❌ 计算失败!")
-                    Log.d("CalculusFragment", "错误信息: ${result.message}")
 
-                    Toast.makeText(
-                        requireContext(),
-                        result.message,
-                        Toast.LENGTH_LONG
-                    ).show()
+                    val immediateTime = System.currentTimeMillis()
+                    Log.d(TAG, "⏱️ 用户可见耗时: ${immediateTime - startTime}ms")
+                }
+                is CalculationResultV2.Error -> {
+                    Toast.makeText(requireContext(), result.message, Toast.LENGTH_LONG).show()
                 }
             }
         } catch (e: Exception) {
-            Log.e("CalculusFragment", "💥 发生异常: ${e.message}", e)
-            Toast.makeText(
-                requireContext(),
-                "发生异常: ${e.message}",
-                Toast.LENGTH_LONG
-            ).show()
+            Log.e(TAG, "V2引擎异常: ${e.message}", e)
+            Toast.makeText(requireContext(), "计算错误: ${e.message}", Toast.LENGTH_LONG).show()
         }
-
-        Log.d("CalculusFragment", "===== calculateDerivative 结束 =====")
-        Log.d("CalculusFragment", "========================================")
     }
 
-    private fun appendMultiFormResultToDisplay(result: CalculationResult.Success) {
+    private fun calculateWithV1Engine() {
+        try {
+            Log.d(TAG, "使用 V1 引擎计算")
+            when (val result = calculusEngineV1.calculateDerivative(currentExpression)) {
+                is CalculationResult.Success -> {
+                    appendResultToDisplay(result)
+                    hasResult = true
+                    disableDerivativeButton()
+
+                    lifecycleScope.launch {
+                        try {
+                            val graphData = withContext(Dispatchers.Default) {
+                                graphEngine.generateGraphData(currentExpression)
+                            }
+                            binding.graphView.setGraphData(graphData)
+                            binding.graphView.visibility = View.VISIBLE
+                        } catch (e: Exception) {
+                            Log.e(TAG, "绘图失败: ${e.message}", e)
+                        }
+                    }
+                }
+                is CalculationResult.Error -> {
+                    Toast.makeText(requireContext(), result.message, Toast.LENGTH_LONG).show()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "V1引擎异常: ${e.message}", e)
+            Toast.makeText(requireContext(), "计算错误: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun appendResultToDisplay(result: CalculationResult.Success) {
+        val builder = SpannableStringBuilder()
+        builder.append(binding.tvDisplay.text)
+        builder.append("\n\n")
+
+        builder.append("f'(x) = ")
+        builder.append(result.displayText)
+
+        if (result.secondDerivativeDisplayText != null) {
+            builder.append("\n\nf''(x) = ")
+            builder.append(result.secondDerivativeDisplayText)
+        }
+
+        binding.tvDisplay.text = builder
+    }
+
+    private fun appendMultiFormResultToDisplay(result: CalculationResultV2.Success) {
         val builder = SpannableStringBuilder()
         builder.append(binding.tvDisplay.text)
         builder.append("\n\n")
@@ -445,7 +497,19 @@ class CalculusFragment : Fragment() {
             builder.append(formatted.displayText)
         }
 
-        if (result.secondDerivativeDisplayText != null) {
+        if (result.secondDerivativeForms != null) {
+            val secondDisplayForms = result.secondDerivativeForms.getDisplayForms()
+
+            builder.append("\n\nf''(x) = ")
+            for ((index, form) in secondDisplayForms.withIndex()) {
+                if (index > 0) {
+                    builder.append("\n       = ")
+                }
+
+                val formatted = formatter.format(form.expression.toString())
+                builder.append(formatted.displayText)
+            }
+        } else if (result.secondDerivativeDisplayText != null) {
             builder.append("\n\nf''(x) = ")
             builder.append(result.secondDerivativeDisplayText)
         }
