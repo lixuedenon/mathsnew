@@ -19,7 +19,7 @@ class FormGenerator {
     private val canonicalizer = ExpressionCanonicalizer()
     private val fractionSimplifier = FractionSimplifier()
 
-    fun generateAllForms(node: MathNode): SimplificationForms {
+    fun generateAllForms(node: MathNode): SimplificationFormsV2 {  // ← 改这里
         Log.d(TAG, "========== 开始生成形式 ==========")
         Log.d(TAG, "输入: $node")
 
@@ -45,7 +45,7 @@ class FormGenerator {
         Log.d(TAG, "共生成 ${forms.size} 种形式")
         Log.d(TAG, "========== 形式生成完成 ==========")
 
-        return SimplificationForms(forms)
+        return SimplificationFormsV2(forms)  // ← 改这里
     }
 
     /**
@@ -398,7 +398,7 @@ class FormGenerator {
                     // 有项不包含这个变量或指数不够，不应该提取
                     Log.d(TAG, "跳过提取变量 $varName，因为不是所有项都有")
                     // 只提取系数
-                    val coeffOnlyGCD = MathTerm(gcd.coefficient, emptyMap(), emptyList(), emptyList())
+                    val coeffOnlyGCD = MathTerm(gcd.coefficient, emptyMap(), emptyMap(), emptyList())
                     return buildFactoredExpression(terms, coeffOnlyGCD)
                 }
             }
@@ -420,7 +420,7 @@ class FormGenerator {
      * 🔧 修复：找最大公因子（更严格的逻辑）
      */
     private fun findGCD(terms: List<MathTerm>): MathTerm {
-        if (terms.isEmpty()) return MathTerm(1.0, emptyMap(), emptyList(), emptyList())
+        if (terms.isEmpty()) return MathTerm(1.0, emptyMap(), emptyMap(), emptyList())
 
         // 系数的GCD
         val coeffGCD = terms.map { abs(it.coefficient) }
@@ -446,7 +446,7 @@ class FormGenerator {
             }
         }
 
-        return MathTerm(coeffGCD, varGCD, emptyList(), emptyList())
+        return MathTerm(coeffGCD, varGCD, emptyMap(), emptyList())
     }
 
     private fun gcd(a: Double, b: Double): Double {
@@ -513,12 +513,4 @@ class FormGenerator {
     private fun isEquivalentString(a: MathNode, b: MathNode): Boolean {
         return a.toString() == b.toString()
     }
-}
-
-enum class SimplificationType {
-    FACTORED,
-    EXPANDED,
-    STANDARD,
-    GROUPED,
-    STRUCTURAL
 }

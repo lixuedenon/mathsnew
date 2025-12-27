@@ -9,43 +9,75 @@ import com.mathsnew.mathsnew.*
 class GraphEngine {
 
     private val parser = ExpressionParser()
-    private val derivativeCalculator = DerivativeCalculator()
-    private val simplifier = ExpressionSimplifier()
 
-    fun generateGraphData(expression: String, variable: String = "x"): GraphData {
+    /**
+     * 生成图形数据（优化版）
+     *
+     * 接收已计算的导数 AST，避免重复计算
+     *
+     * @param originalExpression 原始表达式字符串
+     * @param firstDerivativeAST 已计算的一阶导数 AST（可选）
+     * @param secondDerivativeAST 已计算的二阶导数 AST（可选）
+     * @param variable 变量名，默认为 "x"
+     * @return 图形数据，包含原函数、导数曲线、关键点等
+     */
+    fun generateGraphData(
+        originalExpression: String,
+        firstDerivativeAST: MathNode? = null,
+        secondDerivativeAST: MathNode? = null,
+        variable: String = "x"
+    ): GraphData {
         try {
-            Log.d("GraphEngine", "========================================")
-            Log.d("GraphEngine", "开始生成图形数据")
-            Log.d("GraphEngine", "表达式: $expression")
+            val totalStart = System.currentTimeMillis()
+            Log.d(TAG, "========================================")
+            Log.d(TAG, "⏱️ 开始生成图形数据")
+            Log.d(TAG, "表达式: $originalExpression")
 
-            val originalAst = parser.parse(expression)
-            Log.d("GraphEngine", "原始AST: $originalAst")
+            val parseStart = System.currentTimeMillis()
+            val originalAst = parser.parse(originalExpression)
+            Log.d(TAG, "⏱️ 解析耗时: ${System.currentTimeMillis() - parseStart}ms")
+            Log.d(TAG, "原始AST: $originalAst")
 
-            val firstDerivativeAst = derivativeCalculator.differentiate(originalAst, variable)
-            val firstForms = simplifier.simplifyToMultipleForms(firstDerivativeAst)
-            val simplifiedFirstDerivative = firstForms.getDisplayForms().first().expression
-            Log.d("GraphEngine", "一阶导AST: $simplifiedFirstDerivative")
+            Log.d(TAG, "⏱️ 开始生成曲线数据点...")
+            val curveStart = System.currentTimeMillis()
 
-            val secondDerivativeAst = derivativeCalculator.differentiate(firstDerivativeAst, variable)
-            val secondForms = simplifier.simplifyToMultipleForms(secondDerivativeAst)
-            val simplifiedSecondDerivative = secondForms.getDisplayForms().first().expression
-            Log.d("GraphEngine", "二阶导AST: $simplifiedSecondDerivative")
-
-            Log.d("GraphEngine", "生成曲线数据点...")
             val originalPoints = generateCurvePoints(originalAst)
-            val firstDerivativePoints = generateCurvePoints(simplifiedFirstDerivative)
-            val secondDerivativePoints = generateCurvePoints(simplifiedSecondDerivative)
+            Log.d(TAG, "   原函数: ${originalPoints.size} 点")
 
-            Log.d("GraphEngine", "原函数数点: ${originalPoints.size}")
-            Log.d("GraphEngine", "一阶导数点: ${firstDerivativePoints.size}")
-            Log.d("GraphEngine", "二阶导数点: ${secondDerivativePoints.size}")
+            val firstDerivativePoints = if (firstDerivativeAST != null) {
+                generateCurvePoints(firstDerivativeAST)
+            } else {
+                emptyList()
+            }
+            Log.d(TAG, "   一阶导: ${firstDerivativePoints.size} 点")
 
-            Log.d("GraphEngine", "查找关键点...")
-            val criticalPoints = findCriticalPoints(originalAst, simplifiedFirstDerivative)
-            val inflectionPoints = findInflectionPoints(originalAst, simplifiedSecondDerivative)
+            val secondDerivativePoints = if (secondDerivativeAST != null) {
+                generateCurvePoints(secondDerivativeAST)
+            } else {
+                emptyList()
+            }
+            Log.d(TAG, "   二阶导: ${secondDerivativePoints.size} 点")
 
-            Log.d("GraphEngine", "找到 ${criticalPoints.size} 个临界点")
-            Log.d("GraphEngine", "找到 ${inflectionPoints.size} 个拐点")
+            Log.d(TAG, "⏱️ 曲线生成耗时: ${System.currentTimeMillis() - curveStart}ms")
+
+            Log.d(TAG, "⏱️ 开始查找关键点...")
+            val keyPointStart = System.currentTimeMillis()
+
+            val criticalPoints = if (firstDerivativeAST != null) {
+                findCriticalPoints(originalAst, firstDerivativeAST)
+            } else {
+                emptyList()
+            }
+            Log.d(TAG, "   找到 ${criticalPoints.size} 个临界点")
+
+            val inflectionPoints = if (secondDerivativeAST != null) {
+                findInflectionPoints(originalAst, secondDerivativeAST)
+            } else {
+                emptyList()
+            }
+            Log.d(TAG, "   找到 ${inflectionPoints.size} 个拐点")
+
+            Log.d(TAG, "⏱️ 关键点查找耗时: ${System.currentTimeMillis() - keyPointStart}ms")
 
             val xValues = originalPoints.map { it.x.toDouble() }
             val xMin = xValues.minOrNull() ?: -10.0
@@ -55,7 +87,9 @@ class GraphEngine {
             val yMin = yValues.minOrNull() ?: -10.0
             val yMax = yValues.maxOrNull() ?: 10.0
 
-            Log.d("GraphEngine", "========================================")
+            val totalTime = System.currentTimeMillis() - totalStart
+            Log.d(TAG, "⏱️ 图形生成总耗时: ${totalTime}ms")
+            Log.d(TAG, "========================================")
 
             return GraphData(
                 originalCurve = originalPoints,
@@ -70,11 +104,20 @@ class GraphEngine {
             )
 
         } catch (e: Exception) {
-            Log.e("GraphEngine", "生成图形数据失败: ${e.message}", e)
+            Log.e(TAG, "❌ 生成图形数据失败: ${e.message}", e)
             throw e
         }
     }
 
+    /**
+     * 生成曲线数据点
+     *
+     * 在 [-10, 10] 区间内以 0.1 为步长采样
+     * 过滤掉无效值（NaN、Infinite、过大值）
+     *
+     * @param ast 要绘制的表达式 AST
+     * @return 曲线数据点列表
+     */
     private fun generateCurvePoints(ast: MathNode): List<Point> {
         val points = mutableListOf<Point>()
         val evaluator = MathEvaluator()
@@ -107,6 +150,16 @@ class GraphEngine {
         return points
     }
 
+    /**
+     * 查找临界点（极值点）
+     *
+     * 通过一阶导数为 0 的点确定临界点
+     * 通过左右两侧导数的符号判断是极大值还是极小值
+     *
+     * @param originalAst 原函数 AST
+     * @param firstDerivativeAst 一阶导数 AST
+     * @return 临界点列表
+     */
     private fun findCriticalPoints(
         originalAst: MathNode,
         firstDerivativeAst: MathNode
@@ -150,6 +203,15 @@ class GraphEngine {
         return criticalPoints
     }
 
+    /**
+     * 查找拐点
+     *
+     * 通过二阶导数为 0 的点确定拐点
+     *
+     * @param originalAst 原函数 AST
+     * @param secondDerivativeAst 二阶导数 AST
+     * @return 拐点列表
+     */
     private fun findInflectionPoints(
         originalAst: MathNode,
         secondDerivativeAst: MathNode
@@ -186,5 +248,9 @@ class GraphEngine {
         }
 
         return inflectionPoints
+    }
+
+    companion object {
+        private const val TAG = "GraphEngine"
     }
 }

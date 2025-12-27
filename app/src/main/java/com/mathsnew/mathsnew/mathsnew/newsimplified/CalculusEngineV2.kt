@@ -1,217 +1,283 @@
 // app/src/main/java/com/mathsnew/mathsnew/newsimplified/CalculusEngineV2.kt
-// V2版微积分计算引擎 - 支持多形式化简
+// 微积分引擎 V2
 
 package com.mathsnew.mathsnew.newsimplified
 
-import com.mathsnew.mathsnew.*
 import android.util.Log
-import kotlin.math.abs
+import com.mathsnew.mathsnew.*
 
 class CalculusEngineV2 {
+
+    private val parser = ExpressionParser()
+    private val derivativeCalculator = DerivativeCalculator()
+    private val canonicalizer = ExpressionCanonicalizer()
+    private val formGenerator = FormGenerator()
+    private val formSelector = FormSelector()
+    private val formatter = MathFormatter()
 
     companion object {
         private const val TAG = "CalculusEngineV2"
         private const val EPSILON = 1e-10
     }
 
-    private val parser = ExpressionParser()
-    private val derivativeCalculator = DerivativeCalculator()
-    private val simplifier = ExpressionSimplifierV2()
-    private val selector = FormSelector()
-
     fun calculateDerivative(expression: String): CalculationResult {
-        Log.d(TAG, "========================================")
-        Log.d(TAG, "开始计算导数")
-        Log.d(TAG, "表达式: $expression")
+        try {
+            Log.d(TAG, "========================================")
+            Log.d(TAG, "开始计算导数: $expression")
 
-        return try {
+            val startTime = System.currentTimeMillis()
+
             val ast = parser.parse(expression)
-            Log.d(TAG, "AST: $ast")
+            Log.d(TAG, "解析完成: $ast")
 
-            // 计算一阶导数
-            val rawFirstDerivative = derivativeCalculator.differentiate(ast, "x")
-            Log.d(TAG, "原始一阶导AST: $rawFirstDerivative")
+            val rawDerivative = derivativeCalculator.differentiate(ast, "x")
+            Log.d(TAG, "求导完成: $rawDerivative")
 
-            // 🔧 清理求导结果中的冗余
-            val cleanedFirstDerivative = cleanAST(rawFirstDerivative)
-            Log.d(TAG, "清理后一阶导AST: $cleanedFirstDerivative")
+            val cleanedDerivative = cleanAST(rawDerivative)
+            Log.d(TAG, "清理完成: $cleanedDerivative")
 
-            // 生成多种形式
-            val firstDerivForms = simplifier.simplifyToMultipleForms(cleanedFirstDerivative)
-            Log.d(TAG, "一阶导生成了 ${firstDerivForms.forms.size} 种形式")
+            val canonicalDerivative = canonicalizer.canonicalize(cleanedDerivative)
+            Log.d(TAG, "规范化完成: $canonicalDerivative")
 
-            // 🔧 修复：从 SimplificationForms 中提取 forms 列表
-            val bestForSecond = selector.selectBestForDifferentiation(firstDerivForms.forms)
-            Log.d(TAG, "选择用于二阶导的形式: $bestForSecond")
+            val allForms = formGenerator.generateAllForms(canonicalDerivative)
+            Log.d(TAG, "生成了 ${allForms.forms.size} 种形式")
 
-            // 计算二阶导数
-            val rawSecondDerivative = derivativeCalculator.differentiate(bestForSecond, "x")
-            Log.d(TAG, "原始二阶导AST: $rawSecondDerivative")
+            val bestForm = formSelector.selectBestForDifferentiation(allForms.getDisplayForms())
+            Log.d(TAG, "选择最佳形式: $bestForm")
 
-            // 🔧 清理二阶导数结果
+            val rawSecondDerivative = derivativeCalculator.differentiate(cleanedDerivative, "x")
+            Log.d(TAG, "二阶导数: $rawSecondDerivative")
+
             val cleanedSecondDerivative = cleanAST(rawSecondDerivative)
-            Log.d(TAG, "清理后二阶导AST: $cleanedSecondDerivative")
+            val canonicalSecondDerivative = canonicalizer.canonicalize(cleanedSecondDerivative)
+            val secondDerivativeForms = formGenerator.generateAllForms(canonicalSecondDerivative)
 
-            val secondDerivForms = simplifier.simplifyToMultipleForms(cleanedSecondDerivative)
-            Log.d(TAG, "二阶导生成了 ${secondDerivForms.forms.size} 种形式")
-
-            // 获取主要显示形式
-            val firstDerivMain = firstDerivForms.forms.firstOrNull()?.expression
-            val secondDerivMain = secondDerivForms.forms.firstOrNull()?.expression
-
-            Log.d(TAG, "一阶导主形式: $firstDerivMain")
-            Log.d(TAG, "二阶导主形式: $secondDerivMain")
+            val endTime = System.currentTimeMillis()
+            Log.d(TAG, "✅ 总耗时: ${endTime - startTime}ms")
             Log.d(TAG, "========================================")
 
-            CalculationResult.Success(
-                forms = firstDerivForms,
-                displayText = firstDerivMain?.toString() ?: "",
-                secondDerivativeForms = secondDerivForms,
-                secondDerivativeDisplayText = secondDerivMain?.toString()
+            val firstDerivativeText = formatter.format(bestForm.expression.toString())
+            val secondDerivativeText = formatter.format(
+                formSelector.selectBestForDifferentiation(secondDerivativeForms.getDisplayForms()).expression.toString()
+            )
+
+            return CalculationResult.Success(
+                displayText = firstDerivativeText.displayText,
+                forms = allForms,
+                secondDerivativeDisplayText = secondDerivativeText.displayText,
+                secondDerivativeForms = secondDerivativeForms
             )
 
         } catch (e: Exception) {
             Log.e(TAG, "计算失败: ${e.message}", e)
-            CalculationResult.Error("计算失败: ${e.message}")
+            return CalculationResult.Error("计算错误: ${e.message}")
         }
     }
 
-    /**
-     * 清理AST中的冗余结构
-     *
-     * 清理规则：
-     * 1. x^1.0 → x
-     * 2. 0+x → x, x+0 → x
-     * 3. 1×x → x, x×1 → x
-     * 4. 0×x → 0, x×0 → 0
-     * 5. 0.0+1.0 → 1.0 (常数计算)
-     */
     private fun cleanAST(node: MathNode): MathNode {
+        val step1 = removeZeroAdditions(node)
+        val step2 = removeOneMultiplications(step1)
+        val step3 = simplifyNegativeOne(step2)
+        val step4 = removeDoubleNegation(step3)
+        val step5 = simplifyZeroMultiplication(step4)
+        val step6 = simplifyIdentityOperations(step5)
+        val step7 = flattenNestedOperations(step6)
+        val step8 = removeRedundantParentheses(step7)
+
+        return step8
+    }
+
+    private fun removeZeroAdditions(node: MathNode): MathNode {
         return when (node) {
-            is MathNode.Number -> node
-            is MathNode.Variable -> node
-
-            is MathNode.Function -> {
-                MathNode.Function(node.name, cleanAST(node.argument))
-            }
-
             is MathNode.BinaryOp -> {
-                val left = cleanAST(node.left)
-                val right = cleanAST(node.right)
+                val left = removeZeroAdditions(node.left)
+                val right = removeZeroAdditions(node.right)
 
                 when (node.operator) {
-                    Operator.ADD -> cleanAddition(left, right)
-                    Operator.SUBTRACT -> cleanSubtraction(left, right)
-                    Operator.MULTIPLY -> cleanMultiplication(left, right)
-                    Operator.DIVIDE -> cleanDivision(left, right)
-                    Operator.POWER -> cleanPower(left, right)
+                    Operator.ADD -> {
+                        when {
+                            isZero(left) -> right
+                            isZero(right) -> left
+                            else -> MathNode.BinaryOp(Operator.ADD, left, right)
+                        }
+                    }
+                    Operator.SUBTRACT -> {
+                        when {
+                            isZero(right) -> left
+                            else -> MathNode.BinaryOp(Operator.SUBTRACT, left, right)
+                        }
+                    }
+                    else -> MathNode.BinaryOp(node.operator, left, right)
                 }
             }
+            is MathNode.Function -> MathNode.Function(node.name, removeZeroAdditions(node.argument))
+            else -> node
         }
     }
 
-    private fun cleanAddition(left: MathNode, right: MathNode): MathNode {
-        // 0 + x = x
-        if (left is MathNode.Number && abs(left.value) < EPSILON) {
-            return right
-        }
-        // x + 0 = x
-        if (right is MathNode.Number && abs(right.value) < EPSILON) {
-            return left
-        }
-        // 常数相加
-        if (left is MathNode.Number && right is MathNode.Number) {
-            return MathNode.Number(left.value + right.value)
-        }
+    private fun removeOneMultiplications(node: MathNode): MathNode {
+        return when (node) {
+            is MathNode.BinaryOp -> {
+                val left = removeOneMultiplications(node.left)
+                val right = removeOneMultiplications(node.right)
 
-        return MathNode.BinaryOp(Operator.ADD, left, right)
-    }
-
-    private fun cleanSubtraction(left: MathNode, right: MathNode): MathNode {
-        // x - 0 = x
-        if (right is MathNode.Number && abs(right.value) < EPSILON) {
-            return left
-        }
-        // 0 - x = -x
-        if (left is MathNode.Number && abs(left.value) < EPSILON) {
-            return MathNode.BinaryOp(Operator.MULTIPLY, MathNode.Number(-1.0), right)
-        }
-        // 常数相减
-        if (left is MathNode.Number && right is MathNode.Number) {
-            return MathNode.Number(left.value - right.value)
-        }
-
-        return MathNode.BinaryOp(Operator.SUBTRACT, left, right)
-    }
-
-    private fun cleanMultiplication(left: MathNode, right: MathNode): MathNode {
-        // 0 × x = 0
-        if (left is MathNode.Number && abs(left.value) < EPSILON) {
-            return MathNode.Number(0.0)
-        }
-        // x × 0 = 0
-        if (right is MathNode.Number && abs(right.value) < EPSILON) {
-            return MathNode.Number(0.0)
-        }
-        // 1 × x = x
-        if (left is MathNode.Number && abs(left.value - 1.0) < EPSILON) {
-            return right
-        }
-        // x × 1 = x
-        if (right is MathNode.Number && abs(right.value - 1.0) < EPSILON) {
-            return left
-        }
-        // 常数相乘
-        if (left is MathNode.Number && right is MathNode.Number) {
-            return MathNode.Number(left.value * right.value)
-        }
-
-        return MathNode.BinaryOp(Operator.MULTIPLY, left, right)
-    }
-
-    private fun cleanDivision(left: MathNode, right: MathNode): MathNode {
-        // 0 / x = 0
-        if (left is MathNode.Number && abs(left.value) < EPSILON) {
-            return MathNode.Number(0.0)
-        }
-        // x / 1 = x
-        if (right is MathNode.Number && abs(right.value - 1.0) < EPSILON) {
-            return left
-        }
-        // 常数相除
-        if (left is MathNode.Number && right is MathNode.Number) {
-            if (abs(right.value) > EPSILON) {
-                return MathNode.Number(left.value / right.value)
+                when (node.operator) {
+                    Operator.MULTIPLY -> {
+                        when {
+                            isOne(left) -> right
+                            isOne(right) -> left
+                            else -> MathNode.BinaryOp(Operator.MULTIPLY, left, right)
+                        }
+                    }
+                    Operator.DIVIDE -> {
+                        when {
+                            isOne(right) -> left
+                            else -> MathNode.BinaryOp(Operator.DIVIDE, left, right)
+                        }
+                    }
+                    else -> MathNode.BinaryOp(node.operator, left, right)
+                }
             }
+            is MathNode.Function -> MathNode.Function(node.name, removeOneMultiplications(node.argument))
+            else -> node
         }
-
-        return MathNode.BinaryOp(Operator.DIVIDE, left, right)
     }
 
-    private fun cleanPower(base: MathNode, exponent: MathNode): MathNode {
-        // x^0 = 1
-        if (exponent is MathNode.Number && abs(exponent.value) < EPSILON) {
-            return MathNode.Number(1.0)
-        }
-        // x^1 = x (关键！)
-        if (exponent is MathNode.Number && abs(exponent.value - 1.0) < EPSILON) {
-            return base
-        }
-        // 常数的幂
-        if (base is MathNode.Number && exponent is MathNode.Number) {
-            return MathNode.Number(Math.pow(base.value, exponent.value))
-        }
+    private fun simplifyNegativeOne(node: MathNode): MathNode {
+        return when (node) {
+            is MathNode.BinaryOp -> {
+                val left = simplifyNegativeOne(node.left)
+                val right = simplifyNegativeOne(node.right)
 
-        return MathNode.BinaryOp(Operator.POWER, base, exponent)
+                if (node.operator == Operator.MULTIPLY) {
+                    when {
+                        isNegativeOne(left) && isNegativeOne(right) -> MathNode.Number(1.0)
+                        isNegativeOne(left) -> MathNode.BinaryOp(
+                            Operator.MULTIPLY,
+                            MathNode.Number(-1.0),
+                            right
+                        )
+                        isNegativeOne(right) -> MathNode.BinaryOp(
+                            Operator.MULTIPLY,
+                            MathNode.Number(-1.0),
+                            left
+                        )
+                        else -> MathNode.BinaryOp(Operator.MULTIPLY, left, right)
+                    }
+                } else {
+                    MathNode.BinaryOp(node.operator, left, right)
+                }
+            }
+            is MathNode.Function -> MathNode.Function(node.name, simplifyNegativeOne(node.argument))
+            else -> node
+        }
+    }
+
+    private fun removeDoubleNegation(node: MathNode): MathNode {
+        return when (node) {
+            is MathNode.BinaryOp -> {
+                val left = removeDoubleNegation(node.left)
+                val right = removeDoubleNegation(node.right)
+
+                if (node.operator == Operator.MULTIPLY &&
+                    left is MathNode.Number && left.value == -1.0 &&
+                    right is MathNode.BinaryOp && right.operator == Operator.MULTIPLY &&
+                    right.left is MathNode.Number && right.left.value == -1.0) {
+                    right.right
+                } else {
+                    MathNode.BinaryOp(node.operator, left, right)
+                }
+            }
+            is MathNode.Function -> MathNode.Function(node.name, removeDoubleNegation(node.argument))
+            else -> node
+        }
+    }
+
+    private fun simplifyZeroMultiplication(node: MathNode): MathNode {
+        return when (node) {
+            is MathNode.BinaryOp -> {
+                val left = simplifyZeroMultiplication(node.left)
+                val right = simplifyZeroMultiplication(node.right)
+
+                if (node.operator == Operator.MULTIPLY) {
+                    when {
+                        isZero(left) || isZero(right) -> MathNode.Number(0.0)
+                        else -> MathNode.BinaryOp(Operator.MULTIPLY, left, right)
+                    }
+                } else {
+                    MathNode.BinaryOp(node.operator, left, right)
+                }
+            }
+            is MathNode.Function -> MathNode.Function(node.name, simplifyZeroMultiplication(node.argument))
+            else -> node
+        }
+    }
+
+    private fun simplifyIdentityOperations(node: MathNode): MathNode {
+        return when (node) {
+            is MathNode.BinaryOp -> {
+                val left = simplifyIdentityOperations(node.left)
+                val right = simplifyIdentityOperations(node.right)
+
+                when (node.operator) {
+                    Operator.POWER -> {
+                        when {
+                            isZero(right) -> MathNode.Number(1.0)
+                            isOne(right) -> left
+                            else -> MathNode.BinaryOp(Operator.POWER, left, right)
+                        }
+                    }
+                    else -> MathNode.BinaryOp(node.operator, left, right)
+                }
+            }
+            is MathNode.Function -> MathNode.Function(node.name, simplifyIdentityOperations(node.argument))
+            else -> node
+        }
+    }
+
+    private fun flattenNestedOperations(node: MathNode): MathNode {
+        return when (node) {
+            is MathNode.BinaryOp -> {
+                val left = flattenNestedOperations(node.left)
+                val right = flattenNestedOperations(node.right)
+                MathNode.BinaryOp(node.operator, left, right)
+            }
+            is MathNode.Function -> MathNode.Function(node.name, flattenNestedOperations(node.argument))
+            else -> node
+        }
+    }
+
+    private fun removeRedundantParentheses(node: MathNode): MathNode {
+        return when (node) {
+            is MathNode.BinaryOp -> {
+                val left = removeRedundantParentheses(node.left)
+                val right = removeRedundantParentheses(node.right)
+                MathNode.BinaryOp(node.operator, left, right)
+            }
+            is MathNode.Function -> MathNode.Function(node.name, removeRedundantParentheses(node.argument))
+            else -> node
+        }
+    }
+
+    private fun isZero(node: MathNode): Boolean {
+        return node is MathNode.Number && kotlin.math.abs(node.value) < EPSILON
+    }
+
+    private fun isOne(node: MathNode): Boolean {
+        return node is MathNode.Number && kotlin.math.abs(node.value - 1.0) < EPSILON
+    }
+
+    private fun isNegativeOne(node: MathNode): Boolean {
+        return node is MathNode.Number && kotlin.math.abs(node.value + 1.0) < EPSILON
     }
 }
 
 sealed class CalculationResult {
     data class Success(
+        val displayText: CharSequence,
         val forms: SimplificationForms,
-        val displayText: String,
-        val secondDerivativeForms: SimplificationForms? = null,
-        val secondDerivativeDisplayText: String? = null
+        val secondDerivativeDisplayText: CharSequence?,
+        val secondDerivativeForms: SimplificationForms?
     ) : CalculationResult()
 
     data class Error(val message: String) : CalculationResult()

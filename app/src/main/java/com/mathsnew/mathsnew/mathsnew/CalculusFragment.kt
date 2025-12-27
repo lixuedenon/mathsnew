@@ -1,5 +1,4 @@
 // app/src/main/java/com/mathsnew/mathsnew/CalculusFragment.kt
-// 微积分计算器页面
 
 package com.mathsnew.mathsnew
 
@@ -386,7 +385,6 @@ class CalculusFragment : Fragment() {
                     val calcTime = System.currentTimeMillis()
                     Log.d(TAG, "✅ 计算成功! 耗时: ${calcTime - startTime}ms")
 
-                    // 立即显示结果
                     Log.d(TAG, "⏱️ 开始显示结果...")
                     val displayStartTime = System.currentTimeMillis()
 
@@ -398,18 +396,22 @@ class CalculusFragment : Fragment() {
                     hasResult = true
                     disableDerivativeButton()
 
-                    // 🚀 异步生成图形（不阻塞 UI）
                     Log.d(TAG, "🚀 开始异步生成图形...")
                     lifecycleScope.launch {
                         val graphStartTime = System.currentTimeMillis()
 
                         try {
-                            // 在后台线程生成图形数据
+                            val firstDerivAST = result.forms.getDisplayForms().firstOrNull()?.expression
+                            val secondDerivAST = result.secondDerivativeForms?.getDisplayForms()?.firstOrNull()?.expression
+
                             val graphData = withContext(Dispatchers.Default) {
-                                graphEngine.generateGraphData(currentExpression)
+                                graphEngine.generateGraphData(
+                                    originalExpression = currentExpression,
+                                    firstDerivativeAST = firstDerivAST,
+                                    secondDerivativeAST = secondDerivAST
+                                )
                             }
 
-                            // 回到主线程更新 UI
                             binding.graphView.setGraphData(graphData)
                             binding.graphView.visibility = View.VISIBLE
 
