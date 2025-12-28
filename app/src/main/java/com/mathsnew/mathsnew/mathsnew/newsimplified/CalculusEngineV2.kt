@@ -43,7 +43,7 @@ class CalculusEngineV2 {
             Log.d(TAG, "生成了 ${allForms.forms.size} 种形式")
 
             val bestForm = formSelector.selectBestForDifferentiation(allForms.getDisplayForms())
-            Log.d(TAG, "选择最佳形式: $bestForm")
+            Log.d(TAG, "选择最佳形式: ${bestForm.expression}")
 
             val rawSecondDerivative = derivativeCalculator.differentiate(cleanedDerivative, "x")
             Log.d(TAG, "二阶导数: $rawSecondDerivative")
@@ -57,9 +57,8 @@ class CalculusEngineV2 {
             Log.d(TAG, "========================================")
 
             val firstDerivativeText = formatter.format(bestForm.expression.toString())
-            val secondDerivativeText = formatter.format(
-                formSelector.selectBestForDifferentiation(secondDerivativeForms.getDisplayForms()).expression.toString()
-            )
+            val secondBestForm = formSelector.selectBestForDifferentiation(secondDerivativeForms.getDisplayForms())
+            val secondDerivativeText = formatter.format(secondBestForm.expression.toString())
 
             return CalculationResult.Success(
                 displayText = firstDerivativeText.displayText,
@@ -275,9 +274,9 @@ class CalculusEngineV2 {
 sealed class CalculationResult {
     data class Success(
         val displayText: CharSequence,
-        val forms: SimplificationForms,
+        val forms: SimplificationFormsV2,
         val secondDerivativeDisplayText: CharSequence?,
-        val secondDerivativeForms: SimplificationForms?
+        val secondDerivativeForms: SimplificationFormsV2?
     ) : CalculationResult()
 
     data class Error(val message: String) : CalculationResult()

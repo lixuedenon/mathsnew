@@ -6,33 +6,13 @@ package com.mathsnew.mathsnew.newsimplified
 import com.mathsnew.mathsnew.*
 import kotlin.math.abs
 
-/**
- * 多形式化简结果 V2
- *
- * 支持的形式类型:
- * - FACTORED: 因式形式
- * - EXPANDED: 完全展开
- * - GROUPED: 分组形式
- * - STRUCTURAL: 保留结构
- */
-data class SimplificationForms(
+data class SimplificationFormsV2(
     val forms: List<SimplifiedForm>
 ) {
-    /**
-     * 获取用于显示的表达式列表（已去重）
-     *
-     * @return 去重后的形式列表
-     */
     fun getDisplayForms(): List<SimplifiedForm> {
         return forms.distinctBy { canonicalize(it.expression) }
     }
 
-    /**
-     * 标准化表达式（用于去重比较）
-     *
-     * @param node 表达式节点
-     * @return 标准化字符串
-     */
     private fun canonicalize(node: MathNode): String {
         return when (node) {
             is MathNode.Number -> {
@@ -64,15 +44,15 @@ data class SimplificationForms(
     }
 }
 
-/**
- * 单个化简形式 V2
- *
- * @param expression 化简后的表达式
- * @param type 化简类型
- * @param description 可选的描述文本（用于UI标注）
- */
 data class SimplifiedForm(
     val expression: MathNode,
     val type: SimplificationType,
     val description: String? = null
 )
+
+enum class SimplificationType {
+    FACTORED,
+    EXPANDED,
+    GROUPED,
+    STRUCTURAL
+}

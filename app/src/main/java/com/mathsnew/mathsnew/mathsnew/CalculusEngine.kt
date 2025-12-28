@@ -5,6 +5,7 @@ package com.mathsnew.mathsnew
 
 import android.text.SpannableString
 import android.util.Log
+import com.mathsnew.mathsnew.newsimplified.SimplificationFormsV2
 
 sealed class CalculationResult {
     data class Success(
@@ -12,7 +13,7 @@ sealed class CalculationResult {
         val displayText: SpannableString,
         val secondDerivativeResult: String? = null,
         val secondDerivativeDisplayText: SpannableString? = null,
-        val forms: SimplificationForms
+        val forms: SimplificationFormsV2
     ) : CalculationResult()
 
     data class Error(val message: String) : CalculationResult()

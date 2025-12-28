@@ -4,24 +4,12 @@
 package com.mathsnew.mathsnew
 
 import android.util.Log
+import com.mathsnew.mathsnew.newsimplified.SimplificationFormsV2
+import com.mathsnew.mathsnew.newsimplified.SimplifiedForm
+import com.mathsnew.mathsnew.newsimplified.SimplificationType
 import kotlin.math.abs
 import kotlin.math.round
 
-/**
- * 表达式简化器
- *
- * 提供最多三种化简策略：
- * 1. 因式化简（FACTORED）：保留有意义的因式结构，只展开数字括号
- * 2. 展开化简（EXPANDED）：完全展开，合并所有同类项
- * 3. 标准化简（STANDARD）：标准多项式形式
- *
- * 核心改进：
- * - 使用结构化键系统（computeBaseKey）替代字符串比较
- * - 增强系数提取逻辑（extractAllCoefficients）
- * - 分式化简前先展开分子
- * - 改进同类项合并算法
- * - ✅ 修复：正确展开非数字因子×括号（如 2x(1+x)）
- */
 class ExpressionSimplifier {
 
     companion object {
@@ -29,10 +17,7 @@ class ExpressionSimplifier {
         private const val TAG = "SimplifierDebug"
     }
 
-    /**
-     * 生成多种化简形式（最多三种）
-     */
-    fun simplifyToMultipleForms(node: MathNode): SimplificationForms {
+    fun simplifyToMultipleForms(node: MathNode): SimplificationFormsV2 {
         Log.d(TAG, "========================================")
         Log.d(TAG, "simplifyToMultipleForms 开始")
         Log.d(TAG, "输入表达式: $node")
@@ -57,16 +42,13 @@ class ExpressionSimplifier {
         Log.d(TAG, "STANDARD 结果: $standard")
         forms.add(SimplifiedForm(
             expression = standard,
-            type = SimplificationType.STANDARD
+            type = SimplificationType.STRUCTURAL
         ))
 
         Log.d(TAG, "========================================")
-        return SimplificationForms(forms)
+        return SimplificationFormsV2(forms)
     }
 
-    /**
-     * 因式化简（保留结构）
-     */
     private fun simplifyFactored(node: MathNode): MathNode {
         var current = node
         var previous: MathNode
@@ -329,9 +311,6 @@ class ExpressionSimplifier {
         return MathNode.BinaryOp(Operator.POWER, left, right)
     }
 
-    /**
-     * 展开化简（完全展开）
-     */
     private fun simplifyExpanded(node: MathNode): MathNode {
         Log.d(TAG, "[EXPANDED] 开始化简: $node")
 
@@ -419,10 +398,6 @@ class ExpressionSimplifier {
         }
     }
 
-    /**
-     * 改进的同类项合并算法
-     * 使用 computeBaseKey 替代 normalizeBase
-     */
     private fun mergeTermsImproved(terms: List<MathNode>): List<MathNode> {
         if (terms.isEmpty()) return listOf(MathNode.Number(0.0))
         if (terms.size == 1) return terms
@@ -478,18 +453,6 @@ class ExpressionSimplifier {
         return if (result.isEmpty()) listOf(MathNode.Number(0.0)) else result
     }
 
-    /**
-     * 计算结构化底数键
-     *
-     * 这是核心改进函数，用于可靠地识别同类项
-     *
-     * 返回值示例：
-     * - Number(2.0) → "CONST"
-     * - Variable("x") → "VAR:x"
-     * - x² → "POW:VAR:x:CONST:2.0"
-     * - sin(x) → "FUNC:sin:VAR:x"
-     * - x·y → "MUL:VAR:x:VAR:y"
-     */
     private fun computeBaseKey(node: MathNode): String {
         return when (node) {
             is MathNode.Number -> "CONST"
@@ -540,18 +503,6 @@ class ExpressionSimplifier {
         }
     }
 
-    /**
-     * 增强的系数提取函数
-     *
-     * 递归提取所有数值系数，返回 (总系数, 底数)
-     *
-     * 示例：
-     * - 2x → (2.0, x)
-     * - 2×3×x → (6.0, x)
-     * - 2×x×3 → (6.0, x)
-     * - x → (1.0, x)
-     * - 5 → (5.0, Number(1.0))
-     */
     private fun extractAllCoefficients(node: MathNode): Pair<Double, MathNode> {
         return when (node) {
             is MathNode.Number -> Pair(node.value, MathNode.Number(1.0))
@@ -628,7 +579,6 @@ class ExpressionSimplifier {
             return MathNode.BinaryOp(Operator.SUBTRACT, MathNode.Number(0.0), left)
         }
 
-        // ✅ 修复：处理任意因子 × 加减法表达式（不仅仅是数字）
         if (isAdditionOrSubtraction(right)) {
             Log.d(TAG, "[MUL] 展开分配律: $left × (加减法)")
             return distributeMultiplication(left, right)
@@ -691,16 +641,6 @@ class ExpressionSimplifier {
         }
     }
 
-    /**
-     * ✅ 新增函数：分配任意表达式的乘法
-     *
-     * 处理 factor × (a + b) 或 factor × (a - b)
-     * 其中 factor 可以是任意表达式（不仅仅是数字）
-     *
-     * 示例：
-     * - 2x × (1+x) → 2x×1 + 2x×x → 2x + 2x²
-     * - (a+b) × (c+d) → a×c + a×d + b×c + b×d
-     */
     private fun distributeMultiplication(factor: MathNode, addSubExpr: MathNode): MathNode {
         Log.d(TAG, "[DIST] 分配: $factor × $addSubExpr")
 
@@ -725,11 +665,6 @@ class ExpressionSimplifier {
         }
     }
 
-    /**
-     * 除法化简（展开模式）
-     *
-     * 改进：分式化简前先展开分子
-     */
     private fun simplifyDivisionExpanded(left: MathNode, right: MathNode): MathNode {
         Log.d(TAG, "[DIV] 除法化简: $left / $right")
 
@@ -764,9 +699,6 @@ class ExpressionSimplifier {
         return MathNode.BinaryOp(Operator.DIVIDE, expandedNumerator, expandedDenominator)
     }
 
-    /**
-     * 完全展开表达式（用于分式化简前的预处理）
-     */
     private fun fullyExpandNumerator(node: MathNode): MathNode {
         var current = node
         var previous: MathNode

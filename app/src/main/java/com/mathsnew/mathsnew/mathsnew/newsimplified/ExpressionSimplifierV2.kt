@@ -6,16 +6,6 @@ package com.mathsnew.mathsnew.newsimplified
 import com.mathsnew.mathsnew.*
 import android.util.Log
 
-/**
- * 表达式简化器 V2
- *
- * 全新架构:
- * 1. 使用 ExpressionCanonicalizer 保证正确性
- * 2. 使用 FormGenerator 生成多样性
- * 3. 使用 FormSelector 提供智能选择
- *
- * 这个类是对外的统一接口
- */
 class ExpressionSimplifierV2 {
 
     companion object {
@@ -26,13 +16,7 @@ class ExpressionSimplifierV2 {
     private val formGenerator = FormGenerator()
     private val formSelector = FormSelector()
 
-    /**
-     * 生成多种化简形式
-     *
-     * @param node 待化简的AST节点
-     * @return 包含多种形式的 SimplificationForms
-     */
-    fun simplifyToMultipleForms(node: MathNode): SimplificationForms {
+    fun simplifyToMultipleForms(node: MathNode): SimplificationFormsV2 {
         Log.d(TAG, "========================================")
         Log.d(TAG, "SimplifierV2: 开始化简")
         Log.d(TAG, "输入: $node")
@@ -52,34 +36,22 @@ class ExpressionSimplifierV2 {
 
         } catch (e: Exception) {
             Log.e(TAG, "化简失败: ${e.message}", e)
-            return SimplificationForms(listOf(
+            return SimplificationFormsV2(listOf(
                 SimplifiedForm(node, SimplificationType.STRUCTURAL, "原始形式")
             ))
         }
     }
 
-    /**
-     * 为求导选择最优形式
-     *
-     * @param forms 多种形式
-     * @return 最适合求导的形式
-     */
-    fun selectBestForDifferentiation(forms: SimplificationForms): MathNode {
+    fun selectBestForDifferentiation(forms: SimplificationFormsV2): MathNode {
         val selected = formSelector.selectBestForDifferentiation(forms.forms)
 
-        Log.d(TAG, "为求导选择的形式: $selected")
-        val stats = formSelector.getFormStatistics(selected)
+        Log.d(TAG, "为求导选择的形式: ${selected.expression}")
+        val stats = formSelector.getFormStatistics(selected.expression)
         Log.d(TAG, "  $stats")
 
-        return selected
+        return selected.expression
     }
 
-    /**
-     * 简化接口: 直接返回规范形式
-     *
-     * @param node 待化简的节点
-     * @return 规范化后的节点
-     */
     fun simplify(node: MathNode): MathNode {
         return canonicalizer.canonicalize(node)
     }

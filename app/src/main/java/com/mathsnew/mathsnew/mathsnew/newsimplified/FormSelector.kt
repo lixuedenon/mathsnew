@@ -23,15 +23,15 @@ class FormSelector {
      * 选择最适合求导的形式
      *
      * @param forms 形式列表
-     * @return 最优形式
+     * @return 最优形式（包含完整的 SimplifiedForm 对象）
      */
-    fun selectBestForDifferentiation(forms: List<SimplifiedForm>): MathNode {
+    fun selectBestForDifferentiation(forms: List<SimplifiedForm>): SimplifiedForm {
         if (forms.isEmpty()) {
             throw IllegalArgumentException("No forms available")
         }
 
         if (forms.size == 1) {
-            return forms[0].expression
+            return forms[0]
         }
 
         val scored = forms.map { form ->
@@ -40,7 +40,7 @@ class FormSelector {
 
         val best = scored.minByOrNull { it.second }!!
 
-        return best.first.expression
+        return best.first
     }
 
     /**
