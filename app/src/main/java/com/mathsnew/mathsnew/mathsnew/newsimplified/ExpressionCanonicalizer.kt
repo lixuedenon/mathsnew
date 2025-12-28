@@ -18,7 +18,6 @@ class ExpressionCanonicalizer {
         Log.d(TAG, "========== 开始规范化 ==========")
         Log.d(TAG, "输入: $node")
 
-        // 🔧 关键修复：先处理分式
         if (node is MathNode.BinaryOp && node.operator == Operator.DIVIDE) {
             Log.d(TAG, "检测到分式，分别规范化分子和分母")
             val numerator = canonicalizeNonFraction(node.left)
@@ -29,7 +28,6 @@ class ExpressionCanonicalizer {
             return result
         }
 
-        // 非分式，正常规范化
         val result = canonicalizeNonFraction(node)
         Log.d(TAG, "========== 规范化完成 ==========")
         return result
@@ -76,7 +74,6 @@ class ExpressionCanonicalizer {
                     }
 
                     Operator.DIVIDE -> {
-                        // 分式在展开时保持不变
                         val left = fullyExpand(node.left)
                         val right = fullyExpand(node.right)
                         MathNode.BinaryOp(Operator.DIVIDE, left, right)
@@ -84,11 +81,31 @@ class ExpressionCanonicalizer {
 
                     Operator.POWER -> {
                         val base = fullyExpand(node.left)
-                        expandPower(base, node.right)
+                        val exponent = fullyExpand(node.right)
+                        simplifyPower(base, exponent)
                     }
                 }
             }
         }
+    }
+
+    private fun simplifyPower(base: MathNode, exponent: MathNode): MathNode {
+        if (base is MathNode.BinaryOp && base.operator == Operator.POWER
+            && base.right is MathNode.Number && exponent is MathNode.Number) {
+            val innerExponent = base.right.value
+            val outerExponent = exponent.value
+            val newExponent = innerExponent * outerExponent
+
+            Log.d(TAG, "简化嵌套幂: (${base.left})^$innerExponent^$outerExponent -> (${base.left})^$newExponent")
+
+            return MathNode.BinaryOp(Operator.POWER, base.left, MathNode.Number(newExponent))
+        }
+
+        if (exponent is MathNode.Number) {
+            return expandPower(base, exponent)
+        }
+
+        return MathNode.BinaryOp(Operator.POWER, base, exponent)
     }
 
     private fun expandMultiplication(left: MathNode, right: MathNode): MathNode {
@@ -133,7 +150,6 @@ class ExpressionCanonicalizer {
     }
 
     private fun multiplySimpleTerms(left: MathNode, right: MathNode): MathNode {
-        // 特殊情况：快速处理
         if (left is MathNode.Number && right is MathNode.Number) {
             return MathNode.Number(left.value * right.value)
         }
@@ -152,7 +168,6 @@ class ExpressionCanonicalizer {
             return left
         }
 
-        // 使用 MathTerm 来处理复杂乘法
         try {
             val leftTerm = MathTerm.fromNode(left)
             val rightTerm = MathTerm.fromNode(right)

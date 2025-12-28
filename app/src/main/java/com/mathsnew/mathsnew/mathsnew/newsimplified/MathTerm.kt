@@ -181,10 +181,6 @@ data class MathTerm(
 
         val parts = mutableListOf<MathNode>()
 
-        if (abs(coefficient - 1.0) > EPSILON && abs(coefficient + 1.0) > EPSILON) {
-            parts.add(MathNode.Number(abs(coefficient)))
-        }
-
         for ((varName, exponent) in variables.toSortedMap()) {
             if (abs(exponent) < EPSILON) continue
 
@@ -221,19 +217,17 @@ data class MathTerm(
             result = MathNode.BinaryOp(Operator.MULTIPLY, result, parts[i])
         }
 
-        if (abs(coefficient - 1.0) > EPSILON && abs(coefficient + 1.0) > EPSILON) {
-            result = MathNode.BinaryOp(Operator.MULTIPLY, MathNode.Number(abs(coefficient)), result)
-        }
-
-        if (coefficient < 0) {
-            result = MathNode.BinaryOp(
-                Operator.MULTIPLY,
-                MathNode.Number(-1.0),
+        return when {
+            abs(coefficient - 1.0) < EPSILON -> {
                 result
-            )
+            }
+            abs(coefficient + 1.0) < EPSILON -> {
+                MathNode.BinaryOp(Operator.MULTIPLY, MathNode.Number(-1.0), result)
+            }
+            else -> {
+                MathNode.BinaryOp(Operator.MULTIPLY, MathNode.Number(coefficient), result)
+            }
         }
-
-        return result
     }
 
     fun getBaseKey(): String {
