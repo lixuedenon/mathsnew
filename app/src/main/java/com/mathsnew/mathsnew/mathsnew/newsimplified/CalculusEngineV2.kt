@@ -12,7 +12,6 @@ class CalculusEngineV2 {
     private val derivativeCalculator = DerivativeCalculator()
     private val canonicalizer = ExpressionCanonicalizer()
     private val formGenerator = FormGenerator()
-    private val formSelector = FormSelector()
     private val formatter = MathFormatter()
 
     companion object {
@@ -42,7 +41,7 @@ class CalculusEngineV2 {
             val allForms = formGenerator.generateAllForms(canonicalDerivative)
             Log.d(TAG, "生成了 ${allForms.forms.size} 种形式")
 
-            val bestForm = formSelector.selectBestForDifferentiation(allForms.getDisplayForms())
+            val bestForm = FormSelector.selectBestForDifferentiation(allForms.getDisplayForms())
             Log.d(TAG, "选择最佳形式: ${bestForm.expression}")
 
             val rawSecondDerivative = derivativeCalculator.differentiate(cleanedDerivative, "x")
@@ -57,7 +56,7 @@ class CalculusEngineV2 {
             Log.d(TAG, "========================================")
 
             val firstDerivativeText = formatter.format(bestForm.expression.toString())
-            val secondBestForm = formSelector.selectBestForDifferentiation(secondDerivativeForms.getDisplayForms())
+            val secondBestForm = FormSelector.selectBestForDifferentiation(secondDerivativeForms.getDisplayForms())
             val secondDerivativeText = formatter.format(secondBestForm.expression.toString())
 
             return CalculationResult.Success(

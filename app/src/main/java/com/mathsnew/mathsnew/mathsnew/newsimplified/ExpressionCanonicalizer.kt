@@ -182,7 +182,15 @@ class ExpressionCanonicalizer {
                 newVariables[varName] = (newVariables[varName] ?: 0.0) + exponent
             }
 
-            val newFunctions = leftTerm.functions + rightTerm.functions
+            // ✨✨✨ 修复：正确合并函数的指数 ✨✨✨
+            val newFunctions = mutableMapOf<String, Double>()
+            for ((funcKey, exponent) in leftTerm.functions) {
+                newFunctions[funcKey] = exponent
+            }
+            for ((funcKey, exponent) in rightTerm.functions) {
+                newFunctions[funcKey] = (newFunctions[funcKey] ?: 0.0) + exponent
+            }
+
             val newNested = leftTerm.nestedExpressions + rightTerm.nestedExpressions
 
             val resultTerm = MathTerm(newCoefficient, newVariables, newFunctions, newNested)
@@ -299,10 +307,17 @@ class ExpressionCanonicalizer {
 
         val merged = mutableListOf<MathTerm>()
 
-        for ((_, group) in groups) {
+        for ((key, group) in groups) {
             var combined = group[0]
             for (i in 1 until group.size) {
-                combined = combined.mergeWith(group[i]) ?: combined
+                val next = group[i]
+                val mergeResult = combined.mergeWith(next)
+                if (mergeResult != null) {
+                    combined = mergeResult
+                    Log.d(TAG, "合并同类项: $key")
+                } else {
+                    Log.d(TAG, "无法合并（不是同类项）: ${combined.getBaseKey()} 和 ${next.getBaseKey()}")
+                }
             }
 
             if (!combined.isZero()) {

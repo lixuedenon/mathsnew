@@ -14,7 +14,6 @@ class ExpressionSimplifierV2 {
 
     private val canonicalizer = ExpressionCanonicalizer()
     private val formGenerator = FormGenerator()
-    private val formSelector = FormSelector()
 
     fun simplifyToMultipleForms(node: MathNode): SimplificationFormsV2 {
         Log.d(TAG, "========================================")
@@ -26,7 +25,7 @@ class ExpressionSimplifierV2 {
 
             Log.d(TAG, "生成了 ${forms.forms.size} 种形式:")
             forms.forms.forEachIndexed { index, form ->
-                val stats = formSelector.getFormStatistics(form.expression)
+                val stats = FormSelector.getFormStatistics(form.expression)
                 Log.d(TAG, "  形式${index + 1} [${form.type}]: ${form.expression}")
                 Log.d(TAG, "    $stats")
             }
@@ -43,10 +42,10 @@ class ExpressionSimplifierV2 {
     }
 
     fun selectBestForDifferentiation(forms: SimplificationFormsV2): MathNode {
-        val selected = formSelector.selectBestForDifferentiation(forms.forms)
+        val selected = FormSelector.selectBestForDifferentiation(forms.forms)
 
         Log.d(TAG, "为求导选择的形式: ${selected.expression}")
-        val stats = formSelector.getFormStatistics(selected.expression)
+        val stats = FormSelector.getFormStatistics(selected.expression)
         Log.d(TAG, "  $stats")
 
         return selected.expression

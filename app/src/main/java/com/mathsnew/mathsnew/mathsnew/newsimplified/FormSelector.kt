@@ -1,200 +1,99 @@
 // app/src/main/java/com/mathsnew/mathsnew/newsimplified/FormSelector.kt
-// 智能形式选择器 - 为下一步求导选择最优形式
+// 形式选择器 - 选择最佳显示形式
 
 package com.mathsnew.mathsnew.newsimplified
 
 import com.mathsnew.mathsnew.*
-import kotlin.math.max
+import android.util.Log
+import kotlin.math.abs
 
-/**
- * 智能形式选择器
- *
- * 职责: 从多种形式中选择最适合求导的形式
- *
- * 启发式规则:
- * 1. 多项式优先 (容易求导)
- * 2. 项数少的优先
- * 3. 嵌套少的优先
- * 4. 因式分解的形式次优 (链式法则也不难)
- */
-class FormSelector {
+object FormSelector {
 
-    /**
-     * 选择最适合求导的形式
-     *
-     * @param forms 形式列表
-     * @return 最优形式（包含完整的 SimplifiedForm 对象）
-     */
+    private const val TAG = "FormSelector"
+
     fun selectBestForDifferentiation(forms: List<SimplifiedForm>): SimplifiedForm {
         if (forms.isEmpty()) {
-            throw IllegalArgumentException("No forms available")
+            throw IllegalArgumentException("表单列表不能为空")
         }
 
         if (forms.size == 1) {
             return forms[0]
         }
 
+        Log.d(TAG, "从 ${forms.size} 个形式中选择最佳")
+
         val scored = forms.map { form ->
-            form to estimateDifferentiationComplexity(form.expression)
+            val score = calculateScore(form.expression)
+            Log.d(TAG, "形式 [${form.type}]: 得分=$score, 表达式=${form.expression}")
+            Pair(form, score)
         }
 
-        val best = scored.minByOrNull { it.second }!!
+        val best = scored.minByOrNull { it.second }?.first ?: forms[0]
 
-        return best.first
+        Log.d(TAG, "选择: [${best.type}] ${best.expression}")
+
+        return best
     }
 
-    /**
-     * 估算求导复杂度
-     *
-     * 返回值越小，越容易求导
-     *
-     * @param node 表达式节点
-     * @return 复杂度分数
-     */
-    private fun estimateDifferentiationComplexity(node: MathNode): Int {
+    private fun calculateScore(node: MathNode): Int {
+        var score = 0
+
+        score += countNodes(node) * 1
+
+        score += countDivisions(node) * 5
+
+        score += countPowers(node) * 3
+
+        score += countFunctions(node) * 2
+
+        return score
+    }
+
+    private fun countNodes(node: MathNode): Int {
         return when (node) {
-            is MathNode.Number -> 0
-            is MathNode.Variable -> 1
-
-            is MathNode.Function -> {
-                3 + estimateDifferentiationComplexity(node.argument)
-            }
-
-            is MathNode.BinaryOp -> {
-                when (node.operator) {
-                    Operator.ADD, Operator.SUBTRACT -> {
-                        estimateDifferentiationComplexity(node.left) +
-                        estimateDifferentiationComplexity(node.right) + 1
-                    }
-
-                    Operator.MULTIPLY -> {
-                        (estimateDifferentiationComplexity(node.left) +
-                         estimateDifferentiationComplexity(node.right)) * 2
-                    }
-
-                    Operator.DIVIDE -> {
-                        (estimateDifferentiationComplexity(node.left) +
-                         estimateDifferentiationComplexity(node.right)) * 3
-                    }
-
-                    Operator.POWER -> {
-                        val baseComplexity = estimateDifferentiationComplexity(node.left)
-                        val expComplexity = estimateDifferentiationComplexity(node.right)
-
-                        if (node.right is MathNode.Number) {
-                            baseComplexity * 2 + 2
-                        } else {
-                            (baseComplexity + expComplexity) * 4
-                        }
-                    }
-                }
-            }
+            is MathNode.Number, is MathNode.Variable -> 1
+            is MathNode.Function -> 1 + countNodes(node.argument)
+            is MathNode.BinaryOp -> 1 + countNodes(node.left) + countNodes(node.right)
         }
     }
 
-    /**
-     * 获取表达式的统计信息（用于调试）
-     *
-     * @param node 表达式节点
-     * @return 统计信息
-     */
-    fun getFormStatistics(node: MathNode): FormStatistics {
-        return FormStatistics(
-            termCount = countTerms(node),
-            maxNestingDepth = getMaxDepth(node),
-            variableCount = countVariables(node),
-            functionCount = countFunctions(node),
-            complexity = estimateDifferentiationComplexity(node)
-        )
-    }
-
-    /**
-     * 计数项数
-     *
-     * @param node 表达式节点
-     * @return 项数
-     */
-    private fun countTerms(node: MathNode): Int {
+    private fun countDivisions(node: MathNode): Int {
         return when (node) {
             is MathNode.BinaryOp -> {
-                if (node.operator == Operator.ADD || node.operator == Operator.SUBTRACT) {
-                    countTerms(node.left) + countTerms(node.right)
-                } else {
-                    1
-                }
+                val count = if (node.operator == Operator.DIVIDE) 1 else 0
+                count + countDivisions(node.left) + countDivisions(node.right)
             }
-            else -> 1
-        }
-    }
-
-    /**
-     * 获取最大嵌套深度
-     *
-     * @param node 表达式节点
-     * @return 最大深度
-     */
-    private fun getMaxDepth(node: MathNode): Int {
-        return when (node) {
-            is MathNode.Number, is MathNode.Variable -> 0
-
-            is MathNode.Function -> 1 + getMaxDepth(node.argument)
-
-            is MathNode.BinaryOp -> {
-                1 + max(getMaxDepth(node.left), getMaxDepth(node.right))
-            }
-        }
-    }
-
-    /**
-     * 计数变量出现次数
-     *
-     * @param node 表达式节点
-     * @return 变量出现次数
-     */
-    private fun countVariables(node: MathNode): Int {
-        return when (node) {
-            is MathNode.Variable -> 1
-
-            is MathNode.Function -> countVariables(node.argument)
-
-            is MathNode.BinaryOp -> {
-                countVariables(node.left) + countVariables(node.right)
-            }
-
+            is MathNode.Function -> countDivisions(node.argument)
             else -> 0
         }
     }
 
-    /**
-     * 计数函数出现次数
-     *
-     * @param node 表达式节点
-     * @return 函数出现次数
-     */
+    private fun countPowers(node: MathNode): Int {
+        return when (node) {
+            is MathNode.BinaryOp -> {
+                val count = if (node.operator == Operator.POWER) 1 else 0
+                count + countPowers(node.left) + countPowers(node.right)
+            }
+            is MathNode.Function -> countPowers(node.argument)
+            else -> 0
+        }
+    }
+
     private fun countFunctions(node: MathNode): Int {
         return when (node) {
             is MathNode.Function -> 1 + countFunctions(node.argument)
-
-            is MathNode.BinaryOp -> {
-                countFunctions(node.left) + countFunctions(node.right)
-            }
-
+            is MathNode.BinaryOp -> countFunctions(node.left) + countFunctions(node.right)
             else -> 0
         }
     }
-}
 
-/**
- * 表达式统计信息
- */
-data class FormStatistics(
-    val termCount: Int,
-    val maxNestingDepth: Int,
-    val variableCount: Int,
-    val functionCount: Int,
-    val complexity: Int
-) {
-    override fun toString(): String {
-        return "统计[项:$termCount, 深度:$maxNestingDepth, 变量:$variableCount, 函数:$functionCount, 复杂度:$complexity]"
+    fun getFormStatistics(node: MathNode): String {
+        val nodes = countNodes(node)
+        val divisions = countDivisions(node)
+        val powers = countPowers(node)
+        val functions = countFunctions(node)
+        val score = calculateScore(node)
+
+        return "节点:$nodes, 除法:$divisions, 幂:$powers, 函数:$functions, 得分:$score"
     }
 }

@@ -19,38 +19,46 @@ class FormGenerator {
     private val canonicalizer = ExpressionCanonicalizer()
     private val fractionSimplifier = FractionSimplifier()
 
-    fun generateAllForms(node: MathNode): SimplificationFormsV2 {  // ← 改这里
+    fun generateAllForms(node: MathNode): SimplificationFormsV2 {
         Log.d(TAG, "========== 开始生成形式 ==========")
         Log.d(TAG, "输入: $node")
 
         val forms = mutableListOf<SimplifiedForm>()
 
-        // 规范化，得到真正的展开形式
         val canonical = canonicalizer.canonicalize(node)
         forms.add(SimplifiedForm(canonical, SimplificationType.EXPANDED, "完全展开"))
         Log.d(TAG, "形式1 (展开): $canonical")
 
-        // 如果是分式，生成 ABCD 四种形式
+        val trigSimplified = TrigSimplifier.simplify(canonical)
+        if (!isEquivalentString(trigSimplified, canonical)) {
+            forms.add(SimplifiedForm(trigSimplified, SimplificationType.STRUCTURAL, "三角化简"))
+            Log.d(TAG, "形式2 (三角化简): $trigSimplified")
+        }
+
         if (node is MathNode.BinaryOp && node.operator == Operator.DIVIDE) {
             generateFractionForms(canonical, forms)
         } else {
-            // 非分式，尝试提取公因子
             val factored = extractCommonFactor(canonical)
             if (!isEquivalentString(factored, canonical)) {
                 forms.add(SimplifiedForm(factored, SimplificationType.FACTORED, "提取公因子"))
-                Log.d(TAG, "形式2 (因式): $factored")
+                Log.d(TAG, "形式 (因式): $factored")
+            }
+
+            val trigFactored = TrigSimplifier.simplify(factored)
+            if (!isEquivalentString(trigFactored, factored) &&
+                !isEquivalentString(trigFactored, canonical) &&
+                !isEquivalentString(trigFactored, trigSimplified)) {
+                forms.add(SimplifiedForm(trigFactored, SimplificationType.STRUCTURAL, "因式+三角化简"))
+                Log.d(TAG, "形式 (因式+三角): $trigFactored")
             }
         }
 
         Log.d(TAG, "共生成 ${forms.size} 种形式")
         Log.d(TAG, "========== 形式生成完成 ==========")
 
-        return SimplificationFormsV2(forms)  // ← 改这里
+        return SimplificationFormsV2(forms)
     }
 
-    /**
-     * 生成分式的 ABCD 四种形式
-     */
     private fun generateFractionForms(canonical: MathNode, forms: MutableList<SimplifiedForm>) {
         if (canonical !is MathNode.BinaryOp || canonical.operator != Operator.DIVIDE) {
             return
@@ -59,53 +67,60 @@ class FormGenerator {
         val numerator = canonical.left
         val denominator = canonical.right
 
-        // 形式 B: 分子提取公因子
         val numeratorFactored = extractCommonFactor(numerator)
         if (!isEquivalentString(numeratorFactored, numerator)) {
             val formB = MathNode.BinaryOp(Operator.DIVIDE, numeratorFactored, denominator)
-            forms.add(SimplifiedForm(formB, SimplificationType.FACTORED, "分子因式分解"))
-            Log.d(TAG, "形式B (分子因式): $formB")
+            val trigFormB = TrigSimplifier.simplify(formB)
+
+            forms.add(SimplifiedForm(
+                if (!isEquivalentString(trigFormB, formB)) trigFormB else formB,
+                SimplificationType.FACTORED,
+                "分子因式分解"
+            ))
+            Log.d(TAG, "形式B (分子因式): ${if (!isEquivalentString(trigFormB, formB)) trigFormB else formB}")
         }
 
-        // 形式 C: 分母因式分解
         val denominatorFactored = tryFactorPolynomial(denominator)
         if (!isEquivalentString(denominatorFactored, denominator)) {
             val formC = MathNode.BinaryOp(Operator.DIVIDE, numerator, denominatorFactored)
-            forms.add(SimplifiedForm(formC, SimplificationType.FACTORED, "分母因式分解"))
-            Log.d(TAG, "形式C (分母因式): $formC")
+            val trigFormC = TrigSimplifier.simplify(formC)
+
+            forms.add(SimplifiedForm(
+                if (!isEquivalentString(trigFormC, formC)) trigFormC else formC,
+                SimplificationType.FACTORED,
+                "分母因式分解"
+            ))
+            Log.d(TAG, "形式C (分母因式): ${if (!isEquivalentString(trigFormC, formC)) trigFormC else formC}")
         }
 
-        // 形式 D: 完全约分
         val numeratorFullFactored = extractCommonFactor(numerator)
         val denominatorFullFactored = tryFactorPolynomial(denominator)
 
         val simplified = trySimplifyFraction(numeratorFullFactored, denominatorFullFactored)
         if (!isEquivalentString(simplified, canonical)) {
-            forms.add(SimplifiedForm(simplified, SimplificationType.FACTORED, "约分"))
-            Log.d(TAG, "形式D (约分): $simplified")
+            val trigSimplified = TrigSimplifier.simplify(simplified)
+
+            forms.add(SimplifiedForm(
+                if (!isEquivalentString(trigSimplified, simplified)) trigSimplified else simplified,
+                SimplificationType.FACTORED,
+                "约分"
+            ))
+            Log.d(TAG, "形式D (约分): ${if (!isEquivalentString(trigSimplified, simplified)) trigSimplified else simplified}")
         }
     }
 
-    /**
-     * 尝试因式分解多项式
-     */
     private fun tryFactorPolynomial(node: MathNode): MathNode {
         Log.d(TAG, "尝试因式分解: $node")
 
-        // 尝试识别任意次完全幂
         val perfectPower = tryPerfectPower(node)
         if (perfectPower != null) {
             Log.d(TAG, "识别到完全幂: $perfectPower")
             return perfectPower
         }
 
-        // 尝试提取公因子
         return extractCommonFactor(node)
     }
 
-    /**
-     * 识别任意次完全幂
-     */
     private fun tryPerfectPower(node: MathNode): MathNode? {
         val terms = extractTermsFromSum(node)
         if (terms.isEmpty()) return null
@@ -141,9 +156,6 @@ class FormGenerator {
         return null
     }
 
-    /**
-     * 尝试匹配 (x+a)^n 的二项式展开
-     */
     private fun tryMatchBinomial(varName: String, coeffs: DoubleArray, degree: Int, n: Int): MathNode? {
         if (n != degree) return null
 
@@ -181,9 +193,6 @@ class FormGenerator {
         )
     }
 
-    /**
-     * 计算二项式系数 C(n, k)
-     */
     private fun binomialCoefficient(n: Int, k: Int): Double {
         if (k > n || k < 0) return 0.0
         if (k == 0 || k == n) return 1.0
@@ -197,9 +206,6 @@ class FormGenerator {
         return result
     }
 
-    /**
-     * 尝试约分分式
-     */
     private fun trySimplifyFraction(numerator: MathNode, denominator: MathNode): MathNode {
         Log.d(TAG, "尝试约分: $numerator / $denominator")
 
@@ -273,9 +279,6 @@ class FormGenerator {
         return MathNode.BinaryOp(Operator.DIVIDE, numerator, denominator)
     }
 
-    /**
-     * 尝试幂运算约分
-     */
     private data class PowerCancellationResult(
         val isOne: Boolean,
         val remaining: MathNode
@@ -333,9 +336,6 @@ class FormGenerator {
         return null
     }
 
-    /**
-     * 提取表达式中的因子
-     */
     private fun extractFactors(node: MathNode): List<MathNode> {
         return when (node) {
             is MathNode.Number -> {
@@ -367,9 +367,6 @@ class FormGenerator {
         return result
     }
 
-    /**
-     * 🔧 修复：提取公因子（避免产生负指数）
-     */
     private fun extractCommonFactor(node: MathNode): MathNode {
         if (node !is MathNode.BinaryOp ||
             (node.operator != Operator.ADD && node.operator != Operator.SUBTRACT)) {
@@ -382,22 +379,17 @@ class FormGenerator {
 
         val gcd = findGCD(terms)
 
-        // 🔧 关键修复：检查是否真的应该提取这个公因子
-        // 如果提取后会产生负指数或者分数指数，就不提取
         if (abs(gcd.coefficient - 1.0) < EPSILON &&
             gcd.variables.isEmpty() &&
             gcd.functions.isEmpty()) {
             return node
         }
 
-        // 🔧 新增：检查是否所有项都包含这些变量
         for ((varName, gcdExp) in gcd.variables) {
             for (term in terms) {
                 val termExp = term.variables[varName] ?: 0.0
                 if (termExp < gcdExp - EPSILON) {
-                    // 有项不包含这个变量或指数不够，不应该提取
                     Log.d(TAG, "跳过提取变量 $varName，因为不是所有项都有")
-                    // 只提取系数
                     val coeffOnlyGCD = MathTerm(gcd.coefficient, emptyMap(), emptyMap(), emptyList())
                     return buildFactoredExpression(terms, coeffOnlyGCD)
                 }
@@ -407,35 +399,25 @@ class FormGenerator {
         return buildFactoredExpression(terms, gcd)
     }
 
-    /**
-     * 🔧 新增：构建因式分解表达式
-     */
     private fun buildFactoredExpression(terms: List<MathTerm>, gcd: MathTerm): MathNode {
         val remaining = terms.map { divideTerm(it, gcd) }
         val sumNode = buildSum(remaining.map { it.toNode() })
         return MathNode.BinaryOp(Operator.MULTIPLY, gcd.toNode(), sumNode)
     }
 
-    /**
-     * 🔧 修复：找最大公因子（更严格的逻辑）
-     */
     private fun findGCD(terms: List<MathTerm>): MathTerm {
         if (terms.isEmpty()) return MathTerm(1.0, emptyMap(), emptyMap(), emptyList())
 
-        // 系数的GCD
         val coeffGCD = terms.map { abs(it.coefficient) }
             .reduce { a, b -> gcd(a, b) }
 
-        // 🔧 修复：变量的GCD - 只提取所有项都有的变量
         val allVars = terms.flatMap { it.variables.keys }.toSet()
         val varGCD = mutableMapOf<String, Double>()
 
         for (v in allVars) {
-            // 检查是否所有项都包含这个变量
             val allHaveVar = terms.all { it.variables.containsKey(v) }
 
             if (allHaveVar) {
-                // 所有项都有，取最小指数
                 val minExponent = terms.mapNotNull { it.variables[v] }.minOrNull() ?: 0.0
                 if (minExponent > EPSILON) {
                     varGCD[v] = minExponent
