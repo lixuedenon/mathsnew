@@ -137,6 +137,10 @@ class CalculusFragment : Fragment() {
             currentExpression = ""
             hasResult = false
             enableDerivativeButton()
+
+            // 清除图形
+            binding.graphView.clearGraph()
+            binding.graphView.visibility = View.GONE
         }
 
         currentExpression += "^n"
@@ -148,6 +152,10 @@ class CalculusFragment : Fragment() {
             currentExpression = ""
             hasResult = false
             enableDerivativeButton()
+
+            // 清除图形
+            binding.graphView.clearGraph()
+            binding.graphView.visibility = View.GONE
         }
 
         stopBlinkAnimation()
@@ -177,6 +185,10 @@ class CalculusFragment : Fragment() {
                 currentExpression = ""
                 hasResult = false
                 enableDerivativeButton()
+
+                // 清除图形
+                binding.graphView.clearGraph()
+                binding.graphView.visibility = View.GONE
             } else {
                 if (currentExpression.endsWith("^n")) {
                     currentExpression = currentExpression.dropLast(2)

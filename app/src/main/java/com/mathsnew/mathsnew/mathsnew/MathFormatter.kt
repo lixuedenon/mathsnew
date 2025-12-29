@@ -1,10 +1,12 @@
 // app/src/main/java/com/mathsnew/mathsnew/MathFormatter.kt
-// 数学表达式格式化器（完整版 - 修复 0-x 负号显示）
+// 数学表达式格式化器（完整版 - 支持 sin²(x) 格式和分数线显示）
 
 package com.mathsnew.mathsnew
 
 import android.graphics.Color
 import android.text.SpannableString
+import android.text.SpannableStringBuilder
+import android.text.Spanned
 import android.text.style.ForegroundColorSpan
 import android.text.style.RelativeSizeSpan
 import android.text.style.SuperscriptSpan
@@ -41,7 +43,7 @@ class MathFormatter {
 
         var text = expression
 
-        // 1. 处理 0-x 转换为 -x（增强版）
+        // 1. 处理 0-x 转换为 -x
         text = simplifyNegation(text)
         Log.d("MathFormatter", "负数简化后: $text")
 
@@ -49,24 +51,32 @@ class MathFormatter {
         text = formatNumbers(text)
         Log.d("MathFormatter", "数字格式化后: $text")
 
-        // 3. 智能移除不必要的括号
+        // 3. 重排三角函数幂次 sin(x)^2 → sin²(x)
+        text = rearrangeTrigPowers(text)
+        Log.d("MathFormatter", "三角函数幂次重排后: $text")
+
+        // 4. 智能移除不必要的括号
         text = removeUnnecessaryParentheses(text)
         Log.d("MathFormatter", "去括号后: $text")
 
-        // 4. 处理负号优化
+        // 5. 处理负号优化
         text = optimizeNegativeOne(text)
         Log.d("MathFormatter", "负号优化后: $text")
 
-        // 5. 系数和变量合并前置
+        // 6. 系数和变量合并前置
         text = groupCoefficientsAndVariables(text)
         Log.d("MathFormatter", "系数前置后: $text")
 
-        // 6. 处理乘号省略
+        // 7. 处理乘号省略
         text = simplifyMultiplication(text)
         Log.d("MathFormatter", "乘号简化后: $text")
 
-        // 7. 创建带上标和语法高亮的SpannableString
-        val spannableResult = createFormattedSpannable(text)
+        // 8. 检测分数（顶层除法）
+        val fractions = detectFractions(text)
+        Log.d("MathFormatter", "检测到 ${fractions.size} 个分数")
+
+        // 9. 创建带上标、语法高亮和分数线的SpannableString
+        val spannableResult = createFormattedSpannable(text, fractions)
 
         val plainText = text
 
@@ -74,31 +84,291 @@ class MathFormatter {
     }
 
     /**
-     * 简化负数表示：0-x → -x（增强版）
+     * 检测表达式中的顶层分数
+     * 只检测括号深度为0的除法符号
      *
-     * 处理所有形式：
-     * - (0-x) → -x
-     * - 0-sin(x) → -sin(x)
-     * - 2x+0-sin(x) → 2x-sin(x)
-     * - x²×cos(x)+0-sin(x) → x²·cos(x)-sin(x)
+     * @param text 待检测的表达式
+     * @return 分数信息列表，按照出现顺序排列
+     */
+    private fun detectFractions(text: String): List<FractionInfo> {
+        val fractions = mutableListOf<FractionInfo>()
+        var i = 0
+        var depth = 0
+
+        while (i < text.length) {
+            when (text[i]) {
+                '(' -> depth++
+                ')' -> depth--
+                '/' -> {
+                    if (depth == 0) {
+                        // 找到顶层除法，提取分子和分母
+                        val numeratorStart = findNumeratorStart(text, i)
+                        val denominatorEnd = findDenominatorEnd(text, i)
+
+                        if (numeratorStart >= 0 && denominatorEnd > i) {
+                            val numerator = text.substring(numeratorStart, i)
+                            val denominator = text.substring(i + 1, denominatorEnd)
+
+                            fractions.add(
+                                FractionInfo(
+                                    numerator = numerator,
+                                    denominator = denominator,
+                                    startIndex = numeratorStart,
+                                    endIndex = denominatorEnd
+                                )
+                            )
+
+                            Log.d("MathFormatter", "检测到分数: [$numerator] / [$denominator]")
+                        }
+                    }
+                }
+            }
+            i++
+        }
+
+        return fractions
+    }
+
+    /**
+     * 向前查找分子的起始位置
+     * 分子可以是：数字、变量、函数调用、括号表达式
+     */
+    private fun findNumeratorStart(text: String, divIndex: Int): Int {
+        var i = divIndex - 1
+
+        // 跳过空格
+        while (i >= 0 && text[i].isWhitespace()) {
+            i--
+        }
+
+        if (i < 0) return -1
+
+        // 如果是右括号，找到匹配的左括号
+        if (text[i] == ')') {
+            var depth = 1
+            i--
+            while (i >= 0 && depth > 0) {
+                when (text[i]) {
+                    ')' -> depth++
+                    '(' -> depth--
+                }
+                i--
+            }
+
+            // 检查括号前是否有函数名
+            while (i >= 0 && text[i].isLetter()) {
+                i--
+            }
+
+            return i + 1
+        }
+
+        // 处理普通变量或数字
+        val start = i
+        while (i >= 0) {
+            val c = text[i]
+            if (c.isLetterOrDigit() || c == '.' || c == '^') {
+                i--
+            } else if (c == '-' && i > 0 && text[i - 1] == '^') {
+                // 处理负指数 x^-2
+                i--
+            } else {
+                break
+            }
+        }
+
+        return i + 1
+    }
+
+    /**
+     * 向后查找分母的结束位置
+     * 分母可以是：数字、变量、函数调用、括号表达式
+     * 遇到顶层运算符（+、-、×、·）时停止
+     *
+     * 支持的分母格式：
+     * - 简单变量：x, y
+     * - 带幂次的变量：x^2, y^-3
+     * - 函数（无括号）：sin, cos
+     * - 函数带幂次后跟变量：sin^2x, cos^4x
+     * - 括号表达式：(x+1), (x+1)^2
+     */
+    private fun findDenominatorEnd(text: String, divIndex: Int): Int {
+        var i = divIndex + 1
+
+        // 跳过空格
+        while (i < text.length && text[i].isWhitespace()) {
+            i++
+        }
+
+        if (i >= text.length) return text.length
+
+        // 如果是左括号，找到匹配的右括号
+        if (text[i] == '(') {
+            var depth = 1
+            i++
+            while (i < text.length && depth > 0) {
+                when (text[i]) {
+                    '(' -> depth++
+                    ')' -> depth--
+                }
+                i++
+            }
+
+            // 检查括号后是否有幂次
+            if (i < text.length && text[i] == '^') {
+                i++
+                if (i < text.length && text[i] == '-') {
+                    i++
+                }
+                while (i < text.length && (text[i].isDigit() || text[i] == '.')) {
+                    i++
+                }
+            }
+
+            return i
+        }
+
+        // 处理函数调用或变量
+        if (text[i].isLetter()) {
+            // 读取函数名或变量名
+            while (i < text.length && text[i].isLetter()) {
+                i++
+            }
+
+            // 如果后面跟括号，包含整个函数调用
+            if (i < text.length && text[i] == '(') {
+                var depth = 1
+                i++
+                while (i < text.length && depth > 0) {
+                    when (text[i]) {
+                        '(' -> depth++
+                        ')' -> depth--
+                    }
+                    i++
+                }
+            }
+
+            // 检查是否有幂次
+            if (i < text.length && text[i] == '^') {
+                i++
+                if (i < text.length && text[i] == '-') {
+                    i++
+                }
+                while (i < text.length && (text[i].isDigit() || text[i] == '.')) {
+                    i++
+                }
+            }
+
+            // 关键修复：检查幂次后面是否还有变量（如 sin^4x 中的 x）
+            // 继续读取字母或数字，直到遇到运算符
+            while (i < text.length) {
+                val c = text[i]
+
+                // 遇到顶层运算符时停止
+                if (c in "+-×·/") {
+                    break
+                }
+
+                if (c.isLetterOrDigit() || c == '.') {
+                    i++
+                } else if (c == '^') {
+                    // 可能还有嵌套的幂次，如 x^2y^3
+                    i++
+                    if (i < text.length && text[i] == '-') {
+                        i++
+                    }
+                    while (i < text.length && (text[i].isDigit() || text[i] == '.')) {
+                        i++
+                    }
+                } else {
+                    break
+                }
+            }
+
+            return i
+        }
+
+        // 处理纯数字开头的情况
+        while (i < text.length) {
+            val c = text[i]
+
+            // 遇到顶层运算符时停止
+            if (c in "+-×·") {
+                break
+            }
+
+            if (c.isLetterOrDigit() || c == '.') {
+                i++
+            } else if (c == '^') {
+                i++
+                if (i < text.length && text[i] == '-') {
+                    i++
+                }
+                while (i < text.length && (text[i].isDigit() || text[i] == '.')) {
+                    i++
+                }
+            } else {
+                break
+            }
+        }
+
+        return i
+    }
+
+    /**
+     * 重排三角函数幂次
+     *
+     * 规则：
+     * - sin(x)^2 → sin²(x)
+     * - cos(x)^3 → cos³(x)
+     * - tan(2x)^4 → tan⁴(2x)
+     * - (sin(x))^2 → sin²(x) （去括号）
+     *
+     * 注意：只处理三角函数，不处理其他函数如 ln, log, sqrt
+     */
+    private fun rearrangeTrigPowers(text: String): String {
+        var result = text
+
+        // 三角函数列表
+        val trigFunctions = listOf("sin", "cos", "tan", "cot", "sec", "csc")
+
+        // 模式1: (sin(arg))^n → sin^n(arg)
+        for (func in trigFunctions) {
+            // 匹配 (sin(任意内容))^数字
+            val pattern1 = Regex("""(\($func\(([^)]+)\)\))\^(-?\d+)""")
+            result = pattern1.replace(result) { matchResult ->
+                val arg = matchResult.groupValues[2]
+                val power = matchResult.groupValues[3]
+                "$func^$power($arg)"
+            }
+        }
+
+        // 模式2: sin(arg)^n → sin^n(arg)
+        for (func in trigFunctions) {
+            // 匹配 sin(任意内容)^数字
+            val pattern2 = Regex("""($func\(([^)]+)\))\^(-?\d+)""")
+            result = pattern2.replace(result) { matchResult ->
+                val arg = matchResult.groupValues[2]
+                val power = matchResult.groupValues[3]
+                "$func^$power($arg)"
+            }
+        }
+
+        return result
+    }
+
+    /**
+     * 简化负数表示：0-x → -x（增强版）
      */
     private fun simplifyNegation(text: String): String {
         var result = text
 
-        // 1. 先处理带括号的形式：(0-x) → -x
         result = result.replace(Regex("""\(0-([^)]+)\)"""), "-$1")
         result = result.replace(Regex("""\(0\.0-([^)]+)\)"""), "-$1")
-
-        // 2. 处理表达式开头的：0-x → -x
         result = result.replace(Regex("""^0-"""), "-")
         result = result.replace(Regex("""^0\.0-"""), "-")
-
-        // 3. 处理运算符后的：+0-x → -x，×0-sin(x) → ×-sin(x)
-        // 匹配加减乘除、左括号、幂运算符后的 0-
         result = result.replace(Regex("""([+\-×/·\(^])0-"""), "$1-")
         result = result.replace(Regex("""([+\-×/·\(^])0\.0-"""), "$1-")
-
-        // 4. 清理双运算符：+- → -
         result = result.replace("+-", "-")
 
         return result
@@ -106,32 +376,16 @@ class MathFormatter {
 
     /**
      * 格式化数字显示
-     *
-     * 规则：如果小数部分为0，则只显示整数部分
-     *
-     * 例如：
-     * - 2.0 → 2
-     * - 1.0 → 1
-     * - -3.0 → -3
-     * - 2.5 → 2.5 （保留有效小数）
      */
     private fun formatNumbers(text: String): String {
-        // 匹配数字（包括负数和小数），如果小数部分全是0则去掉
         val regex = Regex("""(-?\d+)\.0+(?=\D|$)""")
         return regex.replace(text) { matchResult ->
-            matchResult.groupValues[1] // 只保留整数部分
+            matchResult.groupValues[1]
         }
     }
 
     /**
      * 智能移除不必要的括号
-     *
-     * 规则：
-     * 1. 移除单项的括号：(2x) → 2x, (x²) → x²
-     * 2. 移除函数参数的多余外层括号：cos((x²)) → cos(x²)
-     * 3. 移除嵌套括号：((a+b)) → (a+b)
-     * 4. 移除分子分母的多余括号：((a))/b → a/b
-     * 5. 保留必要的括号：(a+b)×c, sin(x+1)
      */
     private fun removeUnnecessaryParentheses(text: String): String {
         var result = text
@@ -158,15 +412,12 @@ class MathFormatter {
 
         while (i < text.length) {
             if (text[i] == '(' && i < text.length - 1) {
-                // 找到匹配的右括号
                 val closeIndex = findMatchingCloseParen(text, i)
 
                 if (closeIndex != -1) {
                     val content = text.substring(i + 1, closeIndex)
 
-                    // 判断是否可以移除这对括号
                     if (canRemoveParentheses(text, i, closeIndex, content)) {
-                        // 移除括号
                         result.append(content)
                         i = closeIndex + 1
                         continue
@@ -200,43 +451,27 @@ class MathFormatter {
 
     /**
      * 判断是否可以移除括号
-     *
-     * 可以移除的情况：
-     * 1. 括号内是单个原子项（数字、变量、函数调用）
-     * 2. 括号前是函数名，且内容是简单表达式（去除多余外层）
-     * 3. 括号是最外层且不影响运算优先级
      */
     private fun canRemoveParentheses(text: String, openIndex: Int, closeIndex: Int, content: String): Boolean {
-        // 情况1：空括号（不应该出现，但防御性处理）
         if (content.isEmpty()) return false
 
-        // 情况2：括号前是函数名，保留括号但可能去除内部多余括号
         if (openIndex > 0) {
             val beforeParen = text.substring(0, openIndex)
             if (beforeParen.matches(Regex(".*[a-z]+$"))) {
-                // 这是函数参数，检查内容是否有多余的最外层括号
                 return content.startsWith("(") && content.endsWith(")") &&
                        findMatchingCloseParen(content, 0) == content.length - 1
             }
         }
 
-        // 情况3：括号内是单项（没有顶层运算符）
         if (!hasTopLevelOperator(content)) {
-            // 检查移除后是否安全
             val before = if (openIndex > 0) text[openIndex - 1] else ' '
             val after = if (closeIndex < text.length - 1) text[closeIndex + 1] else ' '
 
-            // 除法分子分母的括号可以移除
             if (before == '/' || after == '/') return true
-
-            // 幂运算的括号可以移除（如果内容是单项）
             if (before == '^' || after == '^') return true
-
-            // 其他单项括号可以移除
             return true
         }
 
-        // 情况4：括号是整个表达式的最外层
         if (openIndex == 0 && closeIndex == text.length - 1) {
             return true
         }
@@ -246,8 +481,6 @@ class MathFormatter {
 
     /**
      * 检查表达式是否包含顶层运算符
-     *
-     * 顶层运算符：不在括号内的 +, -, ×, /
      */
     private fun hasTopLevelOperator(expr: String): Boolean {
         var depth = 0
@@ -265,11 +498,6 @@ class MathFormatter {
 
     /**
      * 优化负一系数显示
-     *
-     * 例如：
-     * - -1× → -
-     * - +-1× → -
-     * - --1× → +
      */
     private fun optimizeNegativeOne(text: String): String {
         var result = text
@@ -283,9 +511,6 @@ class MathFormatter {
 
     /**
      * 系数和变量合并前置
-     *
-     * 将系数移到变量和函数之前，符合数学习惯
-     * 例如：cos(x)×2×x → 2×x×cos(x)
      */
     private fun groupCoefficientsAndVariables(text: String): String {
         val terms = splitByAddSubtract(text)
@@ -296,16 +521,12 @@ class MathFormatter {
     }
 
     /**
-     * 项数据类：包含项的值和前面的运算符
+     * 项数据类
      */
     private data class Term(val value: String, val operator: String)
 
     /**
      * 按加减法分割表达式为多个项
-     *
-     * 注意：
-     * - 处理括号嵌套
-     * - 区分负号和减号
      */
     private fun splitByAddSubtract(expression: String): List<Term> {
         val terms = mutableListOf<Term>()
@@ -358,12 +579,6 @@ class MathFormatter {
 
     /**
      * 智能分割乘法因子
-     *
-     * 处理括号嵌套，正确分割：
-     * - "2×x×cos(x^2)" → ["2", "x", "cos(x^2)"]
-     * - "(a+b)×(c+d)" → ["(a+b)", "(c+d)"]
-     *
-     * 不是简单的 split("×")，而是考虑括号配对
      */
     private fun splitFactors(term: String): List<String> {
         val factors = mutableListOf<String>()
@@ -382,13 +597,11 @@ class MathFormatter {
                 }
                 '×', '·' -> {
                     if (depth == 0) {
-                        // 在顶层遇到乘号，分割因子
                         if (currentFactor.isNotEmpty()) {
                             factors.add(currentFactor.toString())
                             currentFactor = StringBuilder()
                         }
                     } else {
-                        // 在括号内，乘号是因子的一部分
                         currentFactor.append(char)
                     }
                 }
@@ -398,7 +611,6 @@ class MathFormatter {
             }
         }
 
-        // 添加最后一个因子
         if (currentFactor.isNotEmpty()) {
             factors.add(currentFactor.toString())
         }
@@ -410,19 +622,18 @@ class MathFormatter {
      * 判断因子类型
      */
     private enum class FactorType {
-        COEFFICIENT,  // 纯数字
-        VARIABLE,     // 单个变量（可能带指数）
-        FUNCTION,     // 函数或复合表达式
-        PARENTHESIZED // 括号表达式
+        COEFFICIENT,
+        VARIABLE,
+        FUNCTION,
+        PARENTHESIZED
     }
 
     /**
-     * 获取因子类型（改进版：先尝试去括号）
+     * 获取因子类型
      */
     private fun getFactorType(factor: String): FactorType {
         var trimmed = factor.trim()
 
-        // 尝试去掉最外层单项括号
         while (trimmed.startsWith("(") && trimmed.endsWith(")")) {
             val inner = trimmed.substring(1, trimmed.length - 1)
             if (!hasTopLevelOperator(inner)) {
@@ -433,35 +644,16 @@ class MathFormatter {
         }
 
         return when {
-            // 纯数字（包括负数和小数）
             trimmed.matches(Regex("-?\\d+(\\.\\d+)?")) -> FactorType.COEFFICIENT
-
-            // 单个变量（可能带指数），如 x, x^2, y^3
             trimmed.matches(Regex("[a-z](\\^-?\\d+)?")) -> FactorType.VARIABLE
-
-            // 数字×变量（如 2x, 3y^2）
             trimmed.matches(Regex("-?\\d+(\\.\\d+)?×?[a-z](\\^-?\\d+)?")) -> FactorType.COEFFICIENT
-
-            // 括号表达式
             trimmed.startsWith("(") && trimmed.endsWith(")") -> FactorType.PARENTHESIZED
-
-            // 其他情况（函数、复合表达式）
             else -> FactorType.FUNCTION
         }
     }
 
     /**
-     * 重排单个项，将系数前置
-     *
-     * 规则：
-     * - 系数（数字）放最前
-     * - 变量放中间
-     * - 函数和括号表达式放最后
-     * - 除法不参与重排
-     *
-     * 例如：
-     * - cos(x)×2×x → 2×x×cos(x)
-     * - x×(x+1)×2 → 2×x×(x+1)
+     * 重排单个项
      */
     private fun rearrangeTerm(term: String, operator: String): String {
         if (term.contains("/")) {
@@ -469,7 +661,6 @@ class MathFormatter {
             return operator + term
         }
 
-        // 智能分割因子（考虑括号嵌套）
         val factors = splitFactors(term)
 
         val coefficients = mutableListOf<String>()
@@ -489,7 +680,6 @@ class MathFormatter {
         val result = StringBuilder()
         result.append(operator)
 
-        // 按顺序组合：系数 + 变量 + 其他
         val allFactors = coefficients + variables + others
 
         for (i in allFactors.indices) {
@@ -504,17 +694,6 @@ class MathFormatter {
 
     /**
      * 简化乘号显示
-     *
-     * 规则：
-     * - 数字×变量 → 数字和变量（省略乘号）
-     * - 数字×括号 → 数字和括号（省略乘号）
-     * - 变量×变量 → 变量和变量（省略乘号）
-     * - 其他情况 → 保留为点乘 ·
-     *
-     * 例如：
-     * - 2×x → 2x
-     * - x×y → xy
-     * - sin(x)×cos(x) → sin(x)·cos(x)
      */
     private fun simplifyMultiplication(text: String): String {
         val result = StringBuilder()
@@ -548,19 +727,75 @@ class MathFormatter {
     }
 
     /**
-     * 创建带上标和语法高亮的SpannableString
+     * 创建带上标、语法高亮和分数线的SpannableString
      *
-     * 处理：
-     * - ^后面的内容显示为上标
-     * - 不同类型的字符使用不同颜色
-     * - 函数：蓝色
-     * - 变量：黑色
-     * - 数字：红色
-     * - 运算符：绿色
+     * @param text 格式化后的文本
+     * @param fractions 检测到的分数列表
+     * @return 完整格式化的SpannableString
      */
-    private fun createFormattedSpannable(text: String): SpannableString {
+    private fun createFormattedSpannable(text: String, fractions: List<FractionInfo>): SpannableString {
         Log.d("MathFormatter", "创建SpannableString: $text")
 
+        // 如果没有分数，使用原有逻辑
+        if (fractions.isEmpty()) {
+            return createSimpleSpannable(text)
+        }
+
+        // 有分数时，需要分段处理
+        val builder = SpannableStringBuilder()
+        var lastEnd = 0
+
+        for (fraction in fractions) {
+            // 添加分数前的部分
+            if (fraction.startIndex > lastEnd) {
+                val beforeText = text.substring(lastEnd, fraction.startIndex)
+                builder.append(createSimpleSpannable(beforeText))
+            }
+
+            // 创建分子和分母的SpannableString（带上标和语法高亮）
+            val numeratorSpan = createSimpleSpannable(fraction.numerator)
+            val denominatorSpan = createSimpleSpannable(fraction.denominator)
+
+            // 应用FractionSpan
+            val fractionPlaceholder = "█" // 使用占位符
+            val start = builder.length
+            builder.append(fractionPlaceholder)
+            val end = builder.length
+
+            val fractionSpan = FractionSpan(
+                numerator = numeratorSpan,
+                denominator = denominatorSpan,
+                textSize = 48f,
+                lineThickness = 3f,
+                padding = 12f
+            )
+
+            builder.setSpan(
+                fractionSpan,
+                start,
+                end,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+
+            Log.d("MathFormatter", "应用分数线: [$numeratorSpan] / [$denominatorSpan]")
+
+            lastEnd = fraction.endIndex
+        }
+
+        // 添加最后一部分
+        if (lastEnd < text.length) {
+            val afterText = text.substring(lastEnd)
+            builder.append(createSimpleSpannable(afterText))
+        }
+
+        return SpannableString(builder)
+    }
+
+    /**
+     * 创建简单的SpannableString（上标 + 语法高亮）
+     * 用于非分数部分或分数的分子分母
+     */
+    private fun createSimpleSpannable(text: String): SpannableString {
         val charInfoList = mutableListOf<FormatterCharInfo>()
         var i = 0
 
@@ -624,8 +859,6 @@ class MathFormatter {
         }
 
         val displayText = charInfoList.map { it.char }.joinToString("")
-        Log.d("MathFormatter", "最终显示文本: $displayText")
-
         val spannableString = SpannableString(displayText)
 
         var currentPos = 0
@@ -734,9 +967,6 @@ class MathFormatter {
 
 /**
  * 格式化结果数据类
- *
- * @param plainText 纯文本结果（用于日志和调试）
- * @param displayText 带格式的SpannableString（用于UI显示）
  */
 data class FormattedResult(
     val plainText: String,
