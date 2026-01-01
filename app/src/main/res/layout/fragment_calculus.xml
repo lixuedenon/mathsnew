@@ -36,6 +36,28 @@
             android:textColor="@color/text_white"
             android:layout_marginStart="8dp" />
 
+        <!-- ✅ 标题栏清除按钮 -->
+        <ImageButton
+            android:id="@+id/btn_clear_toolbar"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@android:drawable/ic_menu_close_clear_cancel"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="清除"
+            app:tint="@color/text_white"
+            android:layout_marginEnd="8dp" />
+
+        <!-- ✅ 导出按钮 -->
+        <ImageButton
+            android:id="@+id/btn_export"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@android:drawable/ic_menu_share"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="导出"
+            app:tint="@color/text_white"
+            android:layout_marginEnd="8dp" />
+
         <ImageButton
             android:id="@+id/btn_show_steps"
             android:layout_width="40dp"
@@ -215,6 +237,51 @@
                     android:orientation="horizontal">
 
                     <Button
+                        android:id="@+id/btn_arcsin"
+                        android:layout_width="0dp"
+                        android:layout_height="56dp"
+                        android:layout_weight="1"
+                        android:layout_margin="4dp"
+                        android:text="@string/key_arcsin"
+                        android:textSize="11sp"
+                        android:textAllCaps="false"
+                        android:padding="0dp"
+                        android:minWidth="0dp"
+                        android:minHeight="0dp"
+                        android:textColor="@color/key_function_text"
+                        android:backgroundTint="@color/key_function" />
+
+                    <Button
+                        android:id="@+id/btn_arccos"
+                        android:layout_width="0dp"
+                        android:layout_height="56dp"
+                        android:layout_weight="1"
+                        android:layout_margin="4dp"
+                        android:text="@string/key_arccos"
+                        android:textSize="11sp"
+                        android:textAllCaps="false"
+                        android:padding="0dp"
+                        android:minWidth="0dp"
+                        android:minHeight="0dp"
+                        android:textColor="@color/key_function_text"
+                        android:backgroundTint="@color/key_function" />
+
+                    <Button
+                        android:id="@+id/btn_arctan"
+                        android:layout_width="0dp"
+                        android:layout_height="56dp"
+                        android:layout_weight="1"
+                        android:layout_margin="4dp"
+                        android:text="@string/key_arctan"
+                        android:textSize="11sp"
+                        android:textAllCaps="false"
+                        android:padding="0dp"
+                        android:minWidth="0dp"
+                        android:minHeight="0dp"
+                        android:textColor="@color/key_function_text"
+                        android:backgroundTint="@color/key_function" />
+
+                    <Button
                         android:id="@+id/btn_sqrt"
                         android:layout_width="0dp"
                         android:layout_height="56dp"
@@ -229,6 +296,27 @@
                         android:backgroundTint="@color/key_function" />
 
                     <Button
+                        android:id="@+id/btn_abs"
+                        android:layout_width="0dp"
+                        android:layout_height="56dp"
+                        android:layout_weight="1"
+                        android:layout_margin="4dp"
+                        android:text="@string/key_abs"
+                        android:textSize="16sp"
+                        android:padding="0dp"
+                        android:minWidth="0dp"
+                        android:minHeight="0dp"
+                        android:textColor="@color/key_function_text"
+                        android:backgroundTint="@color/key_function" />
+
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <Button
                         android:id="@+id/btn_power"
                         android:layout_width="0dp"
                         android:layout_height="56dp"
@@ -237,20 +325,6 @@
                         android:text="@string/key_power"
                         android:textSize="14sp"
                         android:textAllCaps="false"
-                        android:padding="0dp"
-                        android:minWidth="0dp"
-                        android:minHeight="0dp"
-                        android:textColor="@color/key_function_text"
-                        android:backgroundTint="@color/key_function" />
-
-                    <Button
-                        android:id="@+id/btn_abs"
-                        android:layout_width="0dp"
-                        android:layout_height="56dp"
-                        android:layout_weight="1"
-                        android:layout_margin="4dp"
-                        android:text="@string/key_abs"
-                        android:textSize="16sp"
                         android:padding="0dp"
                         android:minWidth="0dp"
                         android:minHeight="0dp"
@@ -284,6 +358,26 @@
                         android:minHeight="0dp"
                         android:textColor="@color/key_function_text"
                         android:backgroundTint="@color/key_function" />
+
+                    <Button
+                        android:id="@+id/btn_placeholder3"
+                        android:layout_width="0dp"
+                        android:layout_height="56dp"
+                        android:layout_weight="1"
+                        android:layout_margin="4dp"
+                        android:text=""
+                        android:enabled="false"
+                        android:visibility="invisible" />
+
+                    <Button
+                        android:id="@+id/btn_placeholder4"
+                        android:layout_width="0dp"
+                        android:layout_height="56dp"
+                        android:layout_weight="1"
+                        android:layout_margin="4dp"
+                        android:text=""
+                        android:enabled="false"
+                        android:visibility="invisible" />
 
                 </LinearLayout>
 

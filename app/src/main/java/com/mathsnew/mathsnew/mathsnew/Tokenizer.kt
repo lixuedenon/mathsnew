@@ -31,12 +31,10 @@ class Tokenizer {
             val char = expression[i]
 
             when {
-                // 跳过空格
                 char.isWhitespace() -> {
                     i++
                 }
 
-                // 数字（包括小数）
                 char.isDigit() || char == '.' -> {
                     val numberStr = StringBuilder()
                     while (i < expression.length &&
@@ -45,21 +43,17 @@ class Tokenizer {
                         i++
                     }
 
-                    // 添加数字token
                     tokens.add(Token.Number(numberStr.toString().toDouble()))
 
-                    // 隐式乘法检测：数字后面跟字母或左括号
                     if (i < expression.length) {
                         val nextChar = expression[i]
                         if (nextChar.isLetter() || nextChar == '(') {
                             tokens.add(Token.Operator("×"))
                         }
                     }
-                    // 注意：这里不需要 i++，因为上面的while循环已经推进了i
                     continue
                 }
 
-                // 字母（变量或函数名）
                 char.isLetter() -> {
                     val nameStr = StringBuilder()
                     while (i < expression.length && expression[i].isLetter()) {
@@ -69,44 +63,33 @@ class Tokenizer {
 
                     val name = nameStr.toString()
 
-                    // 判断后面是否跟着左括号
                     if (i < expression.length && expression[i] == '(') {
-                        // 后面有左括号，检查是否是函数
                         when (name) {
                             "sin", "cos", "tan", "cot", "sec", "csc",
+                            "arcsin", "arccos", "arctan", "arccot", "arcsec", "arccsc",
                             "ln", "log", "sqrt", "exp", "abs" -> {
-                                // 这是函数，添加函数token
                                 tokens.add(Token.Function(name))
-                                // 不添加乘号！
-                                // 注意：不需要 i++，因为上面的while循环已经推进了i
                                 continue
                             }
                             else -> {
-                                // 不是函数，是变量后跟括号，如 x(x+1)
                                 tokens.add(Token.Variable(name))
-                                // 添加隐式乘号
                                 tokens.add(Token.Operator("×"))
-                                // 注意：不需要 i++
                                 continue
                             }
                         }
                     } else {
-                        // 后面没有左括号，这是普通变量
                         tokens.add(Token.Variable(name))
 
-                        // 隐式乘法检测：变量后面跟字母或左括号
                         if (i < expression.length) {
                             val nextChar = expression[i]
                             if (nextChar.isLetter() || nextChar == '(') {
                                 tokens.add(Token.Operator("×"))
                             }
                         }
-                        // 注意：不需要 i++
                         continue
                     }
                 }
 
-                // 运算符
                 char in "+-×÷^*/" -> {
                     val operatorSymbol = when (char) {
                         '*' -> "×"
@@ -117,7 +100,6 @@ class Tokenizer {
                     i++
                 }
 
-                // 括号
                 char == '(' -> {
                     tokens.add(Token.LeftParen())
                     i++
@@ -125,7 +107,6 @@ class Tokenizer {
                 char == ')' -> {
                     tokens.add(Token.RightParen())
 
-                    // 隐式乘法检测：右括号后面跟数字、字母或左括号
                     i++
                     if (i < expression.length) {
                         val nextChar = expression[i]
@@ -133,14 +114,12 @@ class Tokenizer {
                             tokens.add(Token.Operator("×"))
                         }
                     }
-                    continue  // 已经处理了 i++，跳过后面的 i++
+                    continue
                 }
 
-                // 特殊符号
                 char == 'π' -> {
                     tokens.add(Token.Number(Math.PI))
 
-                    // 隐式乘法检测：π后面跟字母或左括号
                     i++
                     if (i < expression.length) {
                         val nextChar = expression[i]
@@ -148,12 +127,11 @@ class Tokenizer {
                             tokens.add(Token.Operator("×"))
                         }
                     }
-                    continue  // 已经处理了 i++
+                    continue
                 }
                 char == 'e' && (i + 1 >= expression.length || !expression[i + 1].isLetter()) -> {
                     tokens.add(Token.Number(Math.E))
 
-                    // 隐式乘法检测：e后面跟字母或左括号
                     i++
                     if (i < expression.length) {
                         val nextChar = expression[i]
@@ -161,7 +139,7 @@ class Tokenizer {
                             tokens.add(Token.Operator("×"))
                         }
                     }
-                    continue  // 已经处理了 i++
+                    continue
                 }
 
                 else -> {

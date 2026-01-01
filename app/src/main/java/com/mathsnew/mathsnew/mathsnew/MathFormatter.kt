@@ -11,6 +11,7 @@ import android.text.style.ForegroundColorSpan
 import android.text.style.RelativeSizeSpan
 import android.text.style.SuperscriptSpan
 import android.util.Log
+import kotlin.math.abs
 
 private enum class FormatterCharType {
     NUMBER, VARIABLE, OPERATOR, FUNCTION, PAREN
@@ -67,9 +68,17 @@ class MathFormatter {
         text = groupCoefficientsAndVariables(text)
         Log.d("MathFormatter", "系数前置后: $text")
 
+        // 6.5. 强制修正系数位置（确保系数在变量前）
+        text = fixCoefficientPosition(text)
+        Log.d("MathFormatter", "强制修正后: $text")
+
         // 7. 处理乘号省略
         text = simplifyMultiplication(text)
         Log.d("MathFormatter", "乘号简化后: $text")
+
+        // 7.5. 合并分数外的系数（强制）
+        text = mergeFractionCoefficients(text)
+        Log.d("MathFormatter", "分数系数合并后: $text")
 
         // 8. 检测分数（顶层除法）
         val fractions = detectFractions(text)
@@ -78,9 +87,12 @@ class MathFormatter {
         // 9. 创建带上标、语法高亮和分数线的SpannableString
         val spannableResult = createFormattedSpannable(text, fractions)
 
+        // ✅ 10. 检测长度，自动缩放字体（>50字符缩小到70%）
+        val finalSpannable = applyAutoScaling(spannableResult, text)
+
         val plainText = text
 
-        return FormattedResult(plainText, spannableResult)
+        return FormattedResult(plainText, finalSpannable)
     }
 
     /**
@@ -181,16 +193,16 @@ class MathFormatter {
     }
 
     /**
-     * 向后查找分母的结束位置
-     * 分母可以是：数字、变量、函数调用、括号表达式
-     * 遇到顶层运算符（+、-、×、·）时停止
+     * 向后查找分母的结束位置（完全修复版）
      *
      * 支持的分母格式：
      * - 简单变量：x, y
      * - 带幂次的变量：x^2, y^-3
      * - 函数（无括号）：sin, cos
-     * - 函数带幂次后跟变量：sin^2x, cos^4x
+     * - 函数带幂次后跟变量：sin^2x, cos^4x, exp^3x
      * - 括号表达式：(x+1), (x+1)^2
+     *
+     * 遇到顶层运算符（+、-、×、·）时停止
      */
     private fun findDenominatorEnd(text: String, divIndex: Int): Int {
         var i = divIndex + 1
@@ -228,15 +240,24 @@ class MathFormatter {
             return i
         }
 
-        // 处理函数调用或变量
-        if (text[i].isLetter()) {
-            // 读取函数名或变量名
-            while (i < text.length && text[i].isLetter()) {
-                i++
+        // 通用处理：连续读取字母、数字、幂次，直到遇到运算符
+        // 这个逻辑同时适用于：
+        // - 函数：sin, exp, ln
+        // - 变量：x, y
+        // - 函数+幂次：sin^2, exp^3
+        // - 函数+幂次+变量：sin^4x, exp^2x
+        // - 变量+幂次：x^2
+
+        while (i < text.length) {
+            val c = text[i]
+
+            // 遇到顶层运算符时停止
+            if (c in "+-×·/") {
+                break
             }
 
-            // 如果后面跟括号，包含整个函数调用
-            if (i < text.length && text[i] == '(') {
+            // 处理括号（函数调用）
+            if (c == '(') {
                 var depth = 1
                 i++
                 while (i < text.length && depth > 0) {
@@ -246,60 +267,17 @@ class MathFormatter {
                     }
                     i++
                 }
+                continue
             }
 
-            // 检查是否有幂次
-            if (i < text.length && text[i] == '^') {
-                i++
-                if (i < text.length && text[i] == '-') {
-                    i++
-                }
-                while (i < text.length && (text[i].isDigit() || text[i] == '.')) {
-                    i++
-                }
-            }
-
-            // 关键修复：检查幂次后面是否还有变量（如 sin^4x 中的 x）
-            // 继续读取字母或数字，直到遇到运算符
-            while (i < text.length) {
-                val c = text[i]
-
-                // 遇到顶层运算符时停止
-                if (c in "+-×·/") {
-                    break
-                }
-
-                if (c.isLetterOrDigit() || c == '.') {
-                    i++
-                } else if (c == '^') {
-                    // 可能还有嵌套的幂次，如 x^2y^3
-                    i++
-                    if (i < text.length && text[i] == '-') {
-                        i++
-                    }
-                    while (i < text.length && (text[i].isDigit() || text[i] == '.')) {
-                        i++
-                    }
-                } else {
-                    break
-                }
-            }
-
-            return i
-        }
-
-        // 处理纯数字开头的情况
-        while (i < text.length) {
-            val c = text[i]
-
-            // 遇到顶层运算符时停止
-            if (c in "+-×·") {
-                break
-            }
-
+            // 处理字母和数字
             if (c.isLetterOrDigit() || c == '.') {
                 i++
-            } else if (c == '^') {
+                continue
+            }
+
+            // 处理幂次
+            if (c == '^') {
                 i++
                 if (i < text.length && text[i] == '-') {
                     i++
@@ -307,9 +285,11 @@ class MathFormatter {
                 while (i < text.length && (text[i].isDigit() || text[i] == '.')) {
                     i++
                 }
-            } else {
-                break
+                continue
             }
+
+            // 其他字符，停止
+            break
         }
 
         return i
@@ -521,6 +501,168 @@ class MathFormatter {
     }
 
     /**
+     * 强制修正系数位置
+     *
+     * 将所有"变量·系数"强制改为"系数·变量"
+     * 例如：x·6 → 6·x, x^2·4 → 4·x^2
+     */
+    private fun fixCoefficientPosition(text: String): String {
+        var result = text
+
+        // 模式1: 变量(可能有幂次)·系数  →  系数·变量(可能有幂次)
+        // 例如：x·6 → 6·x, x^2·4 → 4·x^2
+        val pattern1 = Regex("""([a-z])(?:\^(-?\d+))?[×·](-?\d+(?:\.\d+)?)""")
+        result = pattern1.replace(result) { matchResult ->
+            val variable = matchResult.groupValues[1]
+            val power = matchResult.groupValues[2]
+            val coeff = matchResult.groupValues[3]
+
+            if (power.isNotEmpty()) {
+                "$coeff×$variable^$power"
+            } else {
+                "$coeff×$variable"
+            }
+        }
+
+        // 模式2: 变量(可能有幂次) 系数（没有乘号）
+        // 例如：x 6 → 6×x（虽然这种情况应该很少）
+        val pattern2 = Regex("""([a-z])(?:\^(-?\d+))?\s+(-?\d+(?:\.\d+)?)""")
+        result = pattern2.replace(result) { matchResult ->
+            val variable = matchResult.groupValues[1]
+            val power = matchResult.groupValues[2]
+            val coeff = matchResult.groupValues[3]
+
+            if (power.isNotEmpty()) {
+                "$coeff×$variable^$power"
+            } else {
+                "$coeff×$variable"
+            }
+        }
+
+        return result
+    }
+
+    /**
+     * 合并分数外的系数到分子
+     *
+     * 将 "2·(分子)/(分母)" 或 "2(分子)/(分母)" 转换为 "(2·分子)/(分母)"
+     *
+     * 例如：
+     * - 2×(-2x⁵-7x⁴+1)/(x+1)⁸ → (-4x⁵-14x⁴+2)/(x+1)⁸
+     * - 2(-2x⁵-7x⁴+1)/(x+1)⁸ → (-4x⁵-14x⁴+2)/(x+1)⁸
+     */
+    private fun mergeFractionCoefficients(text: String): String {
+        var result = text
+
+        // 模式1：系数[×·](...)/(任意)
+        val pattern1 = Regex("""(\d+(?:\.\d+)?)[×·]\(([^)]+)\)/""")
+        result = pattern1.replace(result) { match ->
+            val coeffStr = match.groupValues[1]
+            val numerator = match.groupValues[2]
+
+            val coeff = coeffStr.toDoubleOrNull() ?: return@replace match.value
+            val expanded = multiplyPolynomial(coeff, numerator)
+
+            "($expanded)/"
+        }
+
+        // ✅ 模式2：系数(...)/(任意)  （没有乘号，紧挨着）
+        // 例如：2(-2x^5-7x^4+1)/(x+1)^8
+        val pattern2 = Regex("""(\d+(?:\.\d+)?)\(([^)]+)\)/""")
+        result = pattern2.replace(result) { match ->
+            val coeffStr = match.groupValues[1]
+            val numerator = match.groupValues[2]
+
+            val coeff = coeffStr.toDoubleOrNull() ?: return@replace match.value
+            val expanded = multiplyPolynomial(coeff, numerator)
+
+            "($expanded)/"
+        }
+
+        return result
+    }
+
+    /**
+     * 将多项式的每一项乘以系数
+     *
+     * 例如：2 × (-2x⁵-7x⁴+1) → -4x⁵-14x⁴+2
+     */
+    private fun multiplyPolynomial(coeff: Double, polynomial: String): String {
+        if (abs(coeff - 1.0) < 0.0001) return polynomial
+
+        val result = StringBuilder()
+        var i = 0
+        var currentTerm = StringBuilder()
+
+        while (i < polynomial.length) {
+            val char = polynomial[i]
+
+            when {
+                char in "+-" && i > 0 && currentTerm.isNotEmpty() -> {
+                    // 处理完成一项
+                    result.append(multiplyTerm(coeff, currentTerm.toString()))
+                    currentTerm = StringBuilder()
+                    currentTerm.append(char)
+                }
+                else -> {
+                    currentTerm.append(char)
+                }
+            }
+            i++
+        }
+
+        // 处理最后一项
+        if (currentTerm.isNotEmpty()) {
+            result.append(multiplyTerm(coeff, currentTerm.toString()))
+        }
+
+        return result.toString()
+    }
+
+    /**
+     * 将单项乘以系数
+     *
+     * 例如：2 × (-3x²) → -6x²
+     */
+    private fun multiplyTerm(coeff: Double, term: String): String {
+        val trimmed = term.trim()
+        if (trimmed.isEmpty()) return ""
+
+        // 提取项的系数和变量部分
+        val pattern = Regex("""([+-]?\d*\.?\d*)(.*)""")
+        val match = pattern.find(trimmed) ?: return trimmed
+
+        val termCoeffStr = match.groupValues[1]
+        val rest = match.groupValues[2]
+
+        // 计算项的系数
+        val termCoeff = when {
+            termCoeffStr.isEmpty() -> 1.0
+            termCoeffStr == "+" -> 1.0
+            termCoeffStr == "-" -> -1.0
+            else -> termCoeffStr.toDoubleOrNull() ?: 1.0
+        }
+
+        // 计算新系数
+        val newCoeff = coeff * termCoeff
+
+        // 格式化系数
+        val coeffStr = when {
+            abs(newCoeff - newCoeff.toInt()) < 0.0001 -> {
+                val intCoeff = newCoeff.toInt()
+                when {
+                    intCoeff == 1 && rest.isNotEmpty() -> ""
+                    intCoeff == -1 && rest.isNotEmpty() -> "-"
+                    else -> intCoeff.toString()
+                }
+            }
+            else -> newCoeff.toString()
+        }
+
+        return coeffStr + rest
+    }
+
+    /**
      * 项数据类
      */
     private data class Term(val value: String, val operator: String)
@@ -644,16 +786,16 @@ class MathFormatter {
         }
 
         return when {
-            trimmed.matches(Regex("-?\\d+(\\.\\d+)?")) -> FactorType.COEFFICIENT
-            trimmed.matches(Regex("[a-z](\\^-?\\d+)?")) -> FactorType.VARIABLE
-            trimmed.matches(Regex("-?\\d+(\\.\\d+)?×?[a-z](\\^-?\\d+)?")) -> FactorType.COEFFICIENT
+            trimmed.matches(Regex("""-?\\d+(\\.\\d+)?""")) -> FactorType.COEFFICIENT
+            trimmed.matches(Regex("""[a-z](\\^-?\\d+)?""")) -> FactorType.VARIABLE
+            trimmed.matches(Regex("""-?\\d+(\\.\\d+)?×?[a-z](\\^-?\\d+)?""")) -> FactorType.COEFFICIENT
             trimmed.startsWith("(") && trimmed.endsWith(")") -> FactorType.PARENTHESIZED
             else -> FactorType.FUNCTION
         }
     }
 
     /**
-     * 重排单个项
+     * 重排单个项（修复版：正确处理系数在后面的情况）
      */
     private fun rearrangeTerm(term: String, operator: String): String {
         if (term.contains("/")) {
@@ -670,6 +812,27 @@ class MathFormatter {
         for (factor in factors) {
             if (factor.isEmpty()) continue
 
+            // 检查是否是"变量·系数"的形式（如 x·2）
+            val varCoeffPattern = Regex("""([a-z](?:\^-?\d+)?)[×·](-?\d+(?:\.\d+)?)""")
+            val varCoeffMatch = varCoeffPattern.find(factor)
+            if (varCoeffMatch != null) {
+                variables.add(varCoeffMatch.groupValues[1])  // 变量
+                coefficients.add(varCoeffMatch.groupValues[2])  // 系数
+                Log.d("MathFormatter", "分离变量·系数: ${varCoeffMatch.groupValues[1]} 和 ${varCoeffMatch.groupValues[2]}")
+                continue
+            }
+
+            // 检查是否是"系数·变量"的形式（如 2·x, 2x）
+            val coeffVarPattern = Regex("""(-?\d+(?:\.\d+)?)[×·]?([a-z](?:\^-?\d+)?)""")
+            val coeffVarMatch = coeffVarPattern.find(factor)
+            if (coeffVarMatch != null && coeffVarMatch.value == factor) {
+                coefficients.add(coeffVarMatch.groupValues[1])  // 系数
+                variables.add(coeffVarMatch.groupValues[2])  // 变量
+                Log.d("MathFormatter", "分离系数·变量: ${coeffVarMatch.groupValues[1]} 和 ${coeffVarMatch.groupValues[2]}")
+                continue
+            }
+
+            // 使用原有逻辑判断类型
             when (getFactorType(factor)) {
                 FactorType.COEFFICIENT -> coefficients.add(factor)
                 FactorType.VARIABLE -> variables.add(factor)
@@ -680,6 +843,7 @@ class MathFormatter {
         val result = StringBuilder()
         result.append(operator)
 
+        // 拼接顺序：系数 + 变量 + 其他
         val allFactors = coefficients + variables + others
 
         for (i in allFactors.indices) {
@@ -689,6 +853,7 @@ class MathFormatter {
             }
         }
 
+        Log.d("MathFormatter", "重排结果: ${result.toString()}")
         return result.toString()
     }
 
@@ -829,6 +994,7 @@ class MathFormatter {
                     val name = nameBuilder.toString()
 
                     val isFunctionName = name in listOf("sin", "cos", "tan", "cot", "sec", "csc",
+                                                        "arcsin", "arccos", "arctan", "arccot", "arcsec", "arccsc",
                                                         "ln", "log", "sqrt", "exp", "abs")
                     val type = if (isFunctionName) FormatterCharType.FUNCTION else FormatterCharType.VARIABLE
 
@@ -962,6 +1128,41 @@ class MathFormatter {
             end++
         }
         return end < text.length && text[end] == '('
+    }
+
+    /**
+     * 根据表达式长度自动缩放字体
+     *
+     * 策略：
+     * - 长度 > 50：缩小到 0.7（最小值，不再继续缩小）
+     * - 长度 ≤ 50：正常大小 1.0
+     */
+    private fun applyAutoScaling(
+        spannable: SpannableString,
+        originalText: String
+    ): SpannableString {
+        val length = originalText.length
+
+        // 只有一个阈值：>50 就缩小到70%
+        val scale = if (length > 50) 0.7f else 1.0f
+
+        // 如果需要缩放
+        if (scale < 1.0f) {
+            Log.d("MathFormatter", "表达式长度 $length，缩放到 70%")
+
+            val builder = SpannableStringBuilder(spannable)
+
+            builder.setSpan(
+                RelativeSizeSpan(scale),
+                0,
+                builder.length,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+
+            return SpannableString(builder)
+        }
+
+        return spannable
     }
 }
 

@@ -34,10 +34,13 @@ object TrigSimplifier {
             Log.d(TAG, "迭代 $iterations: $result")
         } while (result.toString() != previous.toString() && iterations < maxIterations)
 
-        Log.d(TAG, "最终结果: $result")
+        // ✨ 新增：最终化简数值系数
+        val finalResult = simplifyNumericCoefficients(result)
+
+        Log.d(TAG, "最终结果: $finalResult")
         Log.d(TAG, "========== 三角化简完成 ==========")
 
-        return result
+        return finalResult
     }
 
     private fun applyDoubleAngle(node: MathNode): MathNode {
@@ -69,6 +72,8 @@ object TrigSimplifier {
         if (pattern != null) {
             Log.d(TAG, "匹配到二倍角: ${pattern.coefficient}×sin(${pattern.angle})×cos(${pattern.angle})")
 
+            // 2sin(x)cos(x) = sin(2x)
+            // A×sin(x)cos(x) = (A/2)×sin(2x)
             val halfCoeff = pattern.coefficient / 2.0
             val doubleAngle = MathNode.BinaryOp(
                 Operator.MULTIPLY,
@@ -80,7 +85,11 @@ object TrigSimplifier {
             return if (abs(halfCoeff - 1.0) < EPSILON) {
                 sin2x
             } else {
-                MathNode.BinaryOp(Operator.MULTIPLY, MathNode.Number(halfCoeff), sin2x)
+                MathNode.BinaryOp(
+                    Operator.MULTIPLY,
+                    MathNode.Number(halfCoeff),
+                    sin2x
+                )
             }
         }
 
@@ -92,9 +101,10 @@ object TrigSimplifier {
     }
 
     private fun simplifyDoubleAngleDiff(left: MathNode, right: MathNode): MathNode {
+        // ✨ 新增：匹配 A×cos²(x) - A×sin²(x) → A×cos(2x)
         val pattern = matchCosSquaredMinusSinSquared(left, right)
         if (pattern != null) {
-            Log.d(TAG, "匹配到二倍角: cos²(${pattern.angle}) - sin²(${pattern.angle})")
+            Log.d(TAG, "匹配到二倍角差: ${pattern.coefficient}×cos²(${pattern.angle}) - ${pattern.coefficient}×sin²(${pattern.angle})")
 
             val doubleAngle = MathNode.BinaryOp(
                 Operator.MULTIPLY,
@@ -106,7 +116,11 @@ object TrigSimplifier {
             return if (abs(pattern.coefficient - 1.0) < EPSILON) {
                 cos2x
             } else {
-                MathNode.BinaryOp(Operator.MULTIPLY, MathNode.Number(pattern.coefficient), cos2x)
+                MathNode.BinaryOp(
+                    Operator.MULTIPLY,
+                    MathNode.Number(pattern.coefficient),
+                    cos2x
+                )
             }
         }
 
@@ -146,19 +160,43 @@ object TrigSimplifier {
         return null
     }
 
+    /**
+     * ✨ 新增：匹配 cos²(x) - sin²(x) 模式
+     *
+     * 支持的模式：
+     * 1. A×cos²(x) - A×sin²(x) → A×cos(2x)
+     * 2. cos²(x) - sin²(x) → cos(2x)
+     */
     private fun matchCosSquaredMinusSinSquared(left: MathNode, right: MathNode): CosMinusSinPattern? {
+        // 提取左边的 cos² 项
         val cosSquared = extractSquaredTrig(left, "cos")
-        val sinSquared = extractSquaredTrig(right, "sin")
+        if (cosSquared == null) return null
 
-        if (cosSquared != null && sinSquared != null &&
-            cosSquared.angle.toString() == sinSquared.angle.toString() &&
-            abs(cosSquared.coefficient - sinSquared.coefficient) < EPSILON) {
-            return CosMinusSinPattern(cosSquared.coefficient, cosSquared.angle)
+        // 提取右边的 sin² 项
+        val sinSquared = extractSquaredTrig(right, "sin")
+        if (sinSquared == null) return null
+
+        // 检查角度是否相同
+        if (cosSquared.angle.toString() != sinSquared.angle.toString()) {
+            return null
         }
 
-        return null
+        // 检查系数是否相同
+        if (abs(cosSquared.coefficient - sinSquared.coefficient) > EPSILON) {
+            return null
+        }
+
+        return CosMinusSinPattern(cosSquared.coefficient, cosSquared.angle)
     }
 
+    /**
+     * 提取平方三角函数项
+     *
+     * 支持的模式：
+     * - A×sin²(x)
+     * - sin²(x)
+     * - A×sin(x)^2
+     */
     private fun extractSquaredTrig(node: MathNode, funcName: String): SquaredTrigPattern? {
         var coefficient = 1.0
         var trigFunc: MathNode.Function? = null
@@ -301,6 +339,88 @@ object TrigSimplifier {
         }
 
         return null
+    }
+
+    /**
+     * ✨ 新增：化简数值系数
+     *
+     * 处理形如 A×B×C 的乘法链，将连续的数值系数相乘
+     * 例如：
+     * - 2×0.5×sin(2x) → 1.0×sin(2x) → sin(2x)
+     * - 3×2×x → 6×x
+     * - 0.5×4×cos(x) → 2×cos(x)
+     */
+    private fun simplifyNumericCoefficients(node: MathNode): MathNode {
+        return when (node) {
+            is MathNode.Number, is MathNode.Variable -> node
+
+            is MathNode.Function -> {
+                val argSimplified = simplifyNumericCoefficients(node.argument)
+                MathNode.Function(node.name, argSimplified)
+            }
+
+            is MathNode.BinaryOp -> {
+                if (node.operator == Operator.MULTIPLY) {
+                    // 收集所有乘法因子
+                    val factors = extractMultiplyFactors(node)
+
+                    // 分离数值因子和非数值因子
+                    val numericFactors = mutableListOf<Double>()
+                    val nonNumericFactors = mutableListOf<MathNode>()
+
+                    for (factor in factors) {
+                        if (factor is MathNode.Number) {
+                            numericFactors.add(factor.value)
+                        } else {
+                            // 递归化简非数值因子
+                            nonNumericFactors.add(simplifyNumericCoefficients(factor))
+                        }
+                    }
+
+                    // 计算数值因子的乘积
+                    val product = numericFactors.fold(1.0) { acc, value -> acc * value }
+
+                    // 重建表达式
+                    buildMultiplyChain(product, nonNumericFactors)
+                } else {
+                    // 其他运算符，递归化简左右子节点
+                    val leftSimplified = simplifyNumericCoefficients(node.left)
+                    val rightSimplified = simplifyNumericCoefficients(node.right)
+                    MathNode.BinaryOp(node.operator, leftSimplified, rightSimplified)
+                }
+            }
+        }
+    }
+
+    /**
+     * 构建乘法链
+     *
+     * @param coefficient 数值系数（已相乘）
+     * @param factors 非数值因子列表
+     * @return 构建好的表达式树
+     */
+    private fun buildMultiplyChain(coefficient: Double, factors: List<MathNode>): MathNode {
+        // 如果没有非数值因子，只返回系数
+        if (factors.isEmpty()) {
+            return MathNode.Number(coefficient)
+        }
+
+        // 如果系数为1，不包含在表达式中
+        val allFactors = if (abs(coefficient - 1.0) < EPSILON) {
+            factors
+        } else {
+            listOf(MathNode.Number(coefficient)) + factors
+        }
+
+        // 如果只有一个因子，直接返回
+        if (allFactors.size == 1) {
+            return allFactors[0]
+        }
+
+        // 构建左结合的乘法链
+        return allFactors.reduce { acc, factor ->
+            MathNode.BinaryOp(Operator.MULTIPLY, acc, factor)
+        }
     }
 
     private fun extractMultiplyFactors(node: MathNode): List<MathNode> {

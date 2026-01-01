@@ -4,7 +4,6 @@
 <resources>
     <string name="app_name">数学天才</string>
 
-    <!-- ホーム画面 -->
     <string name="home_title">多機能電卓</string>
     <string name="module_calculus">微積分計算機</string>
     <string name="module_1">モジュール 1</string>
@@ -18,7 +17,6 @@
     <string name="btn_exit">終了</string>
     <string name="btn_settings">設定</string>
 
-    <!-- 微積分画面 -->
     <string name="calculus_title">微積分計算機</string>
     <string name="display_hint">式を入力してください</string>
     <string name="btn_derivative">微分計算 d/dx</string>
@@ -27,10 +25,12 @@
     <string name="btn_backspace">削除</string>
     <string name="btn_show_steps">手順を表示</string>
 
-    <!-- キーボードボタン -->
     <string name="key_sin">sin</string>
     <string name="key_cos">cos</string>
     <string name="key_tan">tan</string>
+    <string name="key_arcsin">arcsin</string>
+    <string name="key_arccos">arccos</string>
+    <string name="key_arctan">arctan</string>
     <string name="key_ln">ln</string>
     <string name="key_log">log</string>
     <string name="key_sqrt">√</string>
@@ -40,7 +40,6 @@
     <string name="key_e">e</string>
     <string name="key_x">x</string>
 
-    <!-- 設定画面 -->
     <string name="settings_title">設定</string>
     <string name="settings_language">言語選択</string>
     <string name="language_chinese">中文</string>
@@ -48,7 +47,6 @@
     <string name="language_japanese">日本語</string>
     <string name="btn_save">保存</string>
 
-    <!-- 共通 -->
     <string name="cancel">キャンセル</string>
     <string name="confirm">確認</string>
     <string name="exit_confirm">アプリを終了しますか？</string>

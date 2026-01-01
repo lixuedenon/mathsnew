@@ -1,5 +1,4 @@
 // app/src/main/java/com/mathsnew/mathsnew/newsimplified/CalculusEngineV2.kt
-// 微积分引擎 V2
 
 package com.mathsnew.mathsnew.newsimplified
 
@@ -11,7 +10,7 @@ class CalculusEngineV2 {
     private val parser = ExpressionParser()
     private val derivativeCalculator = DerivativeCalculator()
     private val canonicalizer = ExpressionCanonicalizer()
-    private val formGenerator = FormGenerator()
+    private val unifiedEngine = UnifiedIterativeEngine()
     private val formatter = MathFormatter()
 
     companion object {
@@ -38,7 +37,7 @@ class CalculusEngineV2 {
             val canonicalDerivative = canonicalizer.canonicalize(cleanedDerivative)
             Log.d(TAG, "规范化完成: $canonicalDerivative")
 
-            val allForms = formGenerator.generateAllForms(canonicalDerivative)
+            val allForms = unifiedEngine.generateMultipleForms(canonicalDerivative)
             Log.d(TAG, "生成了 ${allForms.forms.size} 种形式")
 
             val bestForm = FormSelector.selectBestForDifferentiation(allForms.getDisplayForms())
@@ -49,7 +48,7 @@ class CalculusEngineV2 {
 
             val cleanedSecondDerivative = cleanAST(rawSecondDerivative)
             val canonicalSecondDerivative = canonicalizer.canonicalize(cleanedSecondDerivative)
-            val secondDerivativeForms = formGenerator.generateAllForms(canonicalSecondDerivative)
+            val secondDerivativeForms = unifiedEngine.generateMultipleForms(canonicalSecondDerivative)
 
             val endTime = System.currentTimeMillis()
             Log.d(TAG, "✅ 总耗时: ${endTime - startTime}ms")

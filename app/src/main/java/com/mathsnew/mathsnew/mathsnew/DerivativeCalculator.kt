@@ -23,44 +23,41 @@ class DerivativeCalculator {
      * 200 - 常数规则
      * 150 - 变量规则
      * 100 - 简单幂规则 (x^n)
-     * 98  - 复合幂规则 ((f(x))^n) ← 新增
+     * 98  - 复合幂规则 ((f(x))^n)
      * 95  - 一般幂规则 (u^v)
      * 90  - 加减法规则
      * 85  - 商规则
      * 80  - 乘法规则
-     * 70  - 三角函数规则
+     * 70  - 三角函数规则（包括反三角函数）
      * 65  - 指数对数规则
      */
     private val rules: List<DerivativeRule> = listOf(
-        // 基础规则（优先级 200-150）
-        ConstantRule(),       // 优先级 200
-        VariableRule(),       // 优先级 150
-
-        // 幂运算规则（优先级 100-95）
-        PowerRule(),          // 优先级 100（处理 x^n）
-        CompositePowerRule(), // 优先级 98（处理 (f(x))^n）← 新增
-        GeneralPowerRule(),   // 优先级 95（处理 u^v，如 x^x）
-
-        // 四则运算规则（优先级 90-80）
-        AdditionRule(),       // 优先级 90
-        SubtractionRule(),    // 优先级 90
-        QuotientRule(),       // 优先级 85（商规则）
-        ProductRule(),        // 优先级 80（乘积规则）
-
-        // 三角函数规则（优先级 70）
-        SinRule(),            // 优先级 70
-        CosRule(),            // 优先级 70
-        TanRule(),            // 优先级 70
-        CotRule(),            // 优先级 70
-        SecRule(),            // 优先级 70
-        CscRule(),            // 优先级 70
-
-        // 指数对数规则（优先级 65）
-        ExpRule(),            // 优先级 65
-        LnRule(),             // 优先级 65
-        LogRule(),            // 优先级 65
-        SqrtRule(),           // 优先级 65
-        AbsRule()             // 优先级 65（绝对值规则）
+        ConstantRule(),
+        VariableRule(),
+        PowerRule(),
+        CompositePowerRule(),
+        GeneralPowerRule(),
+        AdditionRule(),
+        SubtractionRule(),
+        QuotientRule(),
+        ProductRule(),
+        SinRule(),
+        CosRule(),
+        TanRule(),
+        CotRule(),
+        SecRule(),
+        CscRule(),
+        ArcsinRule(),
+        ArccosRule(),
+        ArctanRule(),
+        ArccotRule(),
+        ArcsecRule(),
+        ArccscRule(),
+        ExpRule(),
+        LnRule(),
+        LogRule(),
+        SqrtRule(),
+        AbsRule()
     ).sortedByDescending { it.priority }
 
     /**
@@ -71,15 +68,12 @@ class DerivativeCalculator {
      * @return 微分后的AST节点
      */
     fun differentiate(node: MathNode, variable: String = "x"): MathNode {
-        // 遍历所有规则
         for (rule in rules) {
             if (rule.matches(node, variable)) {
-                // 找到匹配的规则，应用并返回
                 return rule.apply(node, variable, this)
             }
         }
 
-        // 没有匹配的规则
         throw CalculationException("无法对表达式求导: $node")
     }
 
@@ -91,14 +85,9 @@ class DerivativeCalculator {
      * @return 微分结果字符串
      */
     fun differentiateExpression(expression: String, variable: String = "x"): String {
-        // 1. 解析表达式为AST
         val parser = ExpressionParser()
         val ast = parser.parse(expression)
-
-        // 2. 对AST进行微分
         val resultAst = differentiate(ast, variable)
-
-        // 3. 将AST转换回字符串
         return resultAst.toString()
     }
 }
