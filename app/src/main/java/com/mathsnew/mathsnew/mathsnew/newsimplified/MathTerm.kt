@@ -1,9 +1,10 @@
 // app/src/main/java/com/mathsnew/mathsnew/newsimplified/MathTerm.kt
-// 数学项的规范化表示
+// 数学项的规范化表示 (修复版本)
 
 package com.mathsnew.mathsnew.newsimplified
 
 import com.mathsnew.mathsnew.*
+import android.util.Log
 import kotlin.math.abs
 
 data class MathTerm(
@@ -13,6 +14,7 @@ data class MathTerm(
     val nestedExpressions: List<MathNode.BinaryOp>
 ) {
     companion object {
+        private const val TAG = "MathTerm"
         private const val EPSILON = 1e-10
 
         fun fromNode(node: MathNode): MathTerm {
@@ -153,27 +155,48 @@ data class MathTerm(
     fun isConstant(): Boolean = variables.isEmpty() && functions.isEmpty() && nestedExpressions.isEmpty()
 
     fun isSimilarTo(other: MathTerm): Boolean {
-        if (variables != other.variables) return false
+        // ✅ 调试日志
+        Log.d(TAG, "========== isSimilarTo ==========")
+        Log.d(TAG, "this: coeff=$coefficient, vars=$variables")
+        Log.d(TAG, "other: coeff=${other.coefficient}, vars=${other.variables}")
 
-        if (functions.keys != other.functions.keys) return false
-
-        if (nestedExpressions.size != other.nestedExpressions.size) return false
-        if (nestedExpressions.zip(other.nestedExpressions).any { (e1, e2) -> e1.toString() != e2.toString() }) {
+        if (variables != other.variables) {
+            Log.d(TAG, "❌ 变量不同")
             return false
         }
 
+        if (functions.keys != other.functions.keys) {
+            Log.d(TAG, "❌ 函数键不同")
+            return false
+        }
+
+        if (nestedExpressions.size != other.nestedExpressions.size) {
+            Log.d(TAG, "❌ 嵌套表达式数量不同")
+            return false
+        }
+
+        if (nestedExpressions.zip(other.nestedExpressions).any { (e1, e2) -> e1.toString() != e2.toString() }) {
+            Log.d(TAG, "❌ 嵌套表达式内容不同")
+            return false
+        }
+
+        Log.d(TAG, "✅ 是同类项")
         return true
     }
 
     fun mergeWith(other: MathTerm): MathTerm? {
         if (!isSimilarTo(other)) return null
 
-        return MathTerm(
+        val merged = MathTerm(
             coefficient = this.coefficient + other.coefficient,
             variables = this.variables,
             functions = this.functions,
             nestedExpressions = this.nestedExpressions
         )
+
+        Log.d(TAG, "✅ 合并: $coefficient + ${other.coefficient} = ${merged.coefficient}")
+
+        return merged
     }
 
     fun toNode(): MathNode {
@@ -231,20 +254,46 @@ data class MathTerm(
     }
 
     fun getBaseKey(): String {
+        // ✅✅✅ 修复：去掉指数的小数点 ✅✅✅
         val varPart = variables.toSortedMap().entries.joinToString("*") { (v, e) ->
-            if (abs(e - 1.0) < EPSILON) v else "$v^$e"
+            if (abs(e - 1.0) < EPSILON) {
+                v
+            } else {
+                // 去掉小数点
+                val exp = if (e == e.toLong().toDouble()) {
+                    e.toLong().toString()  // "2" 而不是 "2.0"
+                } else {
+                    e.toString()
+                }
+                "$v^$exp"
+            }
         }
 
+        // ✅✅✅ 修复：去掉指数的小数点 ✅✅✅
         val funcPart = functions.entries.sortedBy { it.key }.joinToString("*") { (f, e) ->
-            if (abs(e - 1.0) < EPSILON) f else "$f^$e"
+            if (abs(e - 1.0) < EPSILON) {
+                f
+            } else {
+                // 去掉小数点
+                val exp = if (e == e.toLong().toDouble()) {
+                    e.toLong().toString()  // "2" 而不是 "2.0"
+                } else {
+                    e.toString()
+                }
+                "$f^$exp"
+            }
         }
 
         val nestedPart = nestedExpressions.joinToString("*") { it.toString() }
 
-        return listOf(varPart, funcPart, nestedPart)
+        val key = listOf(varPart, funcPart, nestedPart)
             .filter { it.isNotEmpty() }
             .joinToString("*")
             .ifEmpty { "1" }
+
+        Log.d(TAG, "getBaseKey: coeff=$coefficient → key='$key'")
+        
+        return key
     }
 
     override fun toString(): String {

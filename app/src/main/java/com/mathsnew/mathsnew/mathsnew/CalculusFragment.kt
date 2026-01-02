@@ -64,6 +64,9 @@ class CalculusFragment : Fragment() {
     private var hasResult = false
     private var blinkAnimator: ValueAnimator? = null
 
+    // 保存最后的计算结果用于导出
+    private var lastResult: CalculationResultV2? = null
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -78,9 +81,9 @@ class CalculusFragment : Fragment() {
 
         // ✅ 强制允许横向滚动
         binding.tvDisplay.apply {
-            setHorizontallyScrolling(true)  // 允许横向滚动
-            isHorizontalScrollBarEnabled = true  // 显示滚动条
-            movementMethod = android.text.method.ScrollingMovementMethod.getInstance()  // 关键：启用滚动
+            setHorizontallyScrolling(true)
+            isHorizontalScrollBarEnabled = true
+            movementMethod = android.text.method.ScrollingMovementMethod.getInstance()
 
             // ✅ 强制左对齐
             textAlignment = View.TEXT_ALIGNMENT_VIEW_START
@@ -119,23 +122,30 @@ class CalculusFragment : Fragment() {
     }
 
     /**
-     * ✅ 清除所有内容（包括显示区域）
+     * ✅ 清除所有内容（标题栏清除按钮）
      */
     private fun clearAll() {
+        Log.d(TAG, "🔄 clearAll() 开始")
+
         currentExpression = ""
         hasResult = false
-        lastResult = null  // ✅ 清除保存的结果
+        lastResult = null
+
+        stopBlinkAnimation()  // ✅ 停止闪烁动画
+
         updateDisplay()
         enableDerivativeButton()
 
-        // 清除图形
         binding.graphView.clearGraph()
         binding.graphView.visibility = View.GONE
-
-        // 清除显示区域
         binding.tvDisplay.text = ""
 
-        Log.d(TAG, "✅ 已清除所有内容")
+        // ✅ 重新获取焦点（延迟执行确保UI更新完成）
+        binding.tvDisplay.post {
+            binding.tvDisplay.requestFocus()
+        }
+
+        Log.d(TAG, "✅ clearAll() 完成: hasResult=$hasResult, expr='$currentExpression'")
     }
 
     /**
@@ -143,24 +153,22 @@ class CalculusFragment : Fragment() {
      */
     private fun exportResults() {
         if (currentExpression.isEmpty() && !hasResult) {
-            android.widget.Toast.makeText(requireContext(), "没有可导出的内容", android.widget.Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), "没有可导出的内容", Toast.LENGTH_SHORT).show()
             return
         }
 
-        // 构建纯文本输出
         val output = buildExportText()
 
         if (output.isEmpty()) {
-            android.widget.Toast.makeText(requireContext(), "没有可导出的内容", android.widget.Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), "没有可导出的内容", Toast.LENGTH_SHORT).show()
             return
         }
 
-        // 复制到剪贴板
         val clipboard = requireContext().getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
         val clip = android.content.ClipData.newPlainText("导数计算结果", output)
         clipboard.setPrimaryClip(clip)
 
-        android.widget.Toast.makeText(requireContext(), "✅ 已复制到剪贴板", android.widget.Toast.LENGTH_SHORT).show()
+        Toast.makeText(requireContext(), "✅ 已复制到剪贴板", Toast.LENGTH_SHORT).show()
         Log.d(TAG, "✅ 已导出结果:\n$output")
     }
 
@@ -170,12 +178,10 @@ class CalculusFragment : Fragment() {
     private fun buildExportText(): String {
         val builder = StringBuilder()
 
-        // 1. 原始表达式
         if (currentExpression.isNotEmpty()) {
             builder.append("f(x) = $currentExpression\n")
         }
 
-        // 2. 一阶导数和二阶导数（如果有）
         if (hasResult && lastResult != null) {
             when (val result = lastResult) {
                 is CalculationResultV2.Success -> {
@@ -212,9 +218,6 @@ class CalculusFragment : Fragment() {
 
         return builder.toString()
     }
-
-    // 保存最后的计算结果用于导出
-    private var lastResult: CalculationResultV2? = null
 
     private fun setupKeyboardListeners() {
         binding.btn0.setOnClickListener { appendToExpression("0") }
@@ -266,18 +269,24 @@ class CalculusFragment : Fragment() {
     }
 
     private fun handlePowerInput() {
-        // ✅ 开始新输入时清除结果
+        Log.d(TAG, "^️ handlePowerInput(): hasResult=$hasResult")
+
         if (hasResult) {
+            Log.d(TAG, "  → 调用 clearResults()")
             clearResults()
         }
 
         currentExpression += "^n"
         updateDisplayWithBlink()
+
+        Log.d(TAG, "  → 完成: expr='$currentExpression'")
     }
 
     private fun appendToExpression(value: String) {
-        // ✅ 开始新输入时清除结果
+        Log.d(TAG, "📝 appendToExpression('$value'): hasResult=$hasResult, expr='$currentExpression'")
+
         if (hasResult) {
+            Log.d(TAG, "  → 检测到 hasResult=true，调用 clearResults()")
             clearResults()
         }
 
@@ -290,35 +299,60 @@ class CalculusFragment : Fragment() {
         }
 
         updateDisplay()
+
+        Log.d(TAG, "  → 完成: expr='$currentExpression'")
     }
 
     private fun clearExpression() {
+        Log.d(TAG, "🗑️ clearExpression() 开始")
+
         currentExpression = ""
         hasResult = false
+        lastResult = null  // ✅ 清除保存的结果
+
         stopBlinkAnimation()
         updateDisplay()
         enableDerivativeButton()
+
         binding.graphView.clearGraph()
         binding.graphView.visibility = View.GONE
+
+        // ✅ 清除显示区域
+        binding.tvDisplay.text = ""
+
+        Log.d(TAG, "✅ clearExpression() 完成")
     }
 
     /**
      * ✅ 清除结果和图形（开始新输入时调用）
      */
     private fun clearResults() {
+        Log.d(TAG, "🔄 clearResults() 开始")
+
         currentExpression = ""
         hasResult = false
+        lastResult = null  // ✅ 清除保存的结果
+
+        stopBlinkAnimation()  // ✅ 停止闪烁动画
+
         updateDisplay()
         enableDerivativeButton()
 
-        // ✅ 清除图形
         binding.graphView.clearGraph()
         binding.graphView.visibility = View.GONE
+
+        // ✅ 清除显示区域
+        binding.tvDisplay.text = ""
+
+        Log.d(TAG, "✅ clearResults() 完成: hasResult=$hasResult, expr='$currentExpression'")
     }
 
     private fun backspace() {
+        Log.d(TAG, "⌫ backspace(): hasResult=$hasResult, expr='$currentExpression'")
+
         if (currentExpression.isNotEmpty()) {
             if (hasResult) {
+                Log.d(TAG, "  → hasResult=true，调用 clearResults()")
                 clearResults()
             } else {
                 if (currentExpression.endsWith("^n")) {
@@ -330,6 +364,8 @@ class CalculusFragment : Fragment() {
             }
             updateDisplay()
         }
+
+        Log.d(TAG, "  → 完成: expr='$currentExpression'")
     }
 
     private fun updateDisplay() {
@@ -639,13 +675,13 @@ class CalculusFragment : Fragment() {
 
         val displayForms = result.forms.getDisplayForms()
 
-        // ✅ 2. 一阶导数：f'(x) = 结果（同行显示）
-        builder.append("\n\n")  // 增大行距
+        // ✅ 2. 一阶导数
+        builder.append("\n\n")
         builder.append("f'(x) = ")
 
         for ((index, form) in displayForms.withIndex()) {
             if (index > 0) {
-                builder.append("\n\n      = ")  // 增大行距（两个\n）
+                builder.append("\n\n      = ")
             }
 
             val formatted = formatter.format(form.expression.toString())
@@ -655,38 +691,34 @@ class CalculusFragment : Fragment() {
         if (result.secondDerivativeForms != null) {
             val secondDisplayForms = result.secondDerivativeForms.getDisplayForms()
 
-            // ✅ 3. 二阶导数：智能判断是否换行
-            builder.append("\n\n")  // 增大行距
+            // ✅ 3. 二阶导数
+            builder.append("\n\n")
 
             for ((index, form) in secondDisplayForms.withIndex()) {
                 val formatted = formatter.format(form.expression.toString())
                 val resultText = formatted.plainText
 
-                // ✅ 智能判断：长度 > 50 就换行，否则同行
                 val needsNewLine = resultText.length > 50
 
                 if (index == 0) {
                     if (needsNewLine) {
-                        // 长表达式：换行显示
                         builder.append("f''(x) =\n")
-                        builder.append("        ")  // 缩进
+                        builder.append("        ")
                     } else {
-                        // 短表达式：同行显示
                         builder.append("f''(x) = ")
                     }
                 } else {
                     if (needsNewLine) {
-                        builder.append("\n\n       =\n")  // 增大行距
-                        builder.append("        ")  // 缩进
+                        builder.append("\n\n       =\n")
+                        builder.append("        ")
                     } else {
-                        builder.append("\n\n       = ")  // 增大行距
+                        builder.append("\n\n       = ")
                     }
                 }
 
                 builder.append(formatted.displayText)
             }
         } else if (result.secondDerivativeDisplayText != null) {
-            // ✅ 备用：直接显示文本
             val resultText = result.secondDerivativeDisplayText.toString()
             val needsNewLine = resultText.length > 50
 
