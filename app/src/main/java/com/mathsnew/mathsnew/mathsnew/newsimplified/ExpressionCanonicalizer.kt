@@ -1,5 +1,6 @@
 // app/src/main/java/com/mathsnew/mathsnew/newsimplified/ExpressionCanonicalizer.kt
 // 表达式规范化引擎 - 保证完全展开和合并同类项
+// 修改版：分子和分母都不完全展开，保留因式结构
 
 package com.mathsnew.mathsnew.newsimplified
 
@@ -14,14 +15,30 @@ class ExpressionCanonicalizer {
         private const val EPSILON = 1e-10
     }
 
+    /**
+     * 规范化表达式的主入口
+     *
+     * 策略：
+     * 1. 如果是分式，分别处理分子和分母
+     *    - 分子：只合并同类项，不展开幂运算
+     *    - 分母：只合并同类项，不展开幂运算
+     * 2. 如果不是分式，完全展开 + 合并同类项
+     */
     fun canonicalize(node: MathNode): MathNode {
         Log.d(TAG, "========== 开始规范化 ==========")
         Log.d(TAG, "输入: $node")
 
         if (node is MathNode.BinaryOp && node.operator == Operator.DIVIDE) {
-            Log.d(TAG, "检测到分式，分别规范化分子和分母")
+            Log.d(TAG, "检测到分式，分别处理分子和分母")
+
+            // ⚠️ 关键修改：分子也不完全展开，只合并同类项
             val numerator = canonicalizeNonFraction(node.left)
-            val denominator = canonicalizeNonFraction(node.right)
+            Log.d(TAG, "分子规范化完成: $numerator")
+
+            // 分母：只合并同类项，不展开幂运算（保留因式结构）
+            val denominator = canonicalizeDenominatorOnly(node.right)
+            Log.d(TAG, "分母规范化完成: $denominator")
+
             val result = MathNode.BinaryOp(Operator.DIVIDE, numerator, denominator)
             Log.d(TAG, "分式规范化完成: $result")
             Log.d(TAG, "========== 规范化完成 ==========")
@@ -33,6 +50,9 @@ class ExpressionCanonicalizer {
         return result
     }
 
+    /**
+     * 规范化非分式表达式（完全展开 + 合并同类项）
+     */
     private fun canonicalizeNonFraction(node: MathNode): MathNode {
         val expanded = fullyExpand(node)
         Log.d(TAG, "展开后: $expanded")
@@ -51,6 +71,89 @@ class ExpressionCanonicalizer {
         return result
     }
 
+    /**
+     * 规范化分子/分母（只合并同类项，不展开幂运算）
+     *
+     * 策略：
+     * 1. 如果是加减法，递归处理每一项
+     * 2. 如果是乘法，递归处理每个因子
+     * 3. 如果是幂运算，保持原样（不展开）
+     * 4. 对于简单的加法表达式，合并同类项
+     */
+    private fun canonicalizeDenominatorOnly(node: MathNode): MathNode {
+        Log.d(TAG, "开始化简（不展开幂）: $node")
+
+        return when (node) {
+            is MathNode.Number, is MathNode.Variable -> {
+                node
+            }
+
+            is MathNode.Function -> {
+                // 函数参数递归化简
+                MathNode.Function(node.name, canonicalizeDenominatorOnly(node.argument))
+            }
+
+            is MathNode.BinaryOp -> {
+                when (node.operator) {
+                    // 加法和减法：尝试合并同类项
+                    Operator.ADD, Operator.SUBTRACT -> {
+                        val left = canonicalizeDenominatorOnly(node.left)
+                        val right = canonicalizeDenominatorOnly(node.right)
+
+                        // 尝试提取并合并同类项
+                        val terms = extractTermsWithoutExpanding(
+                            MathNode.BinaryOp(node.operator, left, right)
+                        )
+
+                        if (terms.size > 1) {
+                            val merged = mergeTerms(terms)
+                            val sorted = sortTerms(merged)
+                            buildExpression(sorted)
+                        } else {
+                            MathNode.BinaryOp(node.operator, left, right)
+                        }
+                    }
+
+                    // 乘法：递归化简每个因子
+                    Operator.MULTIPLY -> {
+                        val left = canonicalizeDenominatorOnly(node.left)
+                        val right = canonicalizeDenominatorOnly(node.right)
+                        MathNode.BinaryOp(Operator.MULTIPLY, left, right)
+                    }
+
+                    // ⚠️ 关键：幂运算保持原样，不展开
+                    Operator.POWER -> {
+                        val base = canonicalizeDenominatorOnly(node.left)
+                        val exponent = canonicalizeDenominatorOnly(node.right)
+                        MathNode.BinaryOp(Operator.POWER, base, exponent)
+                    }
+
+                    // 除法：递归处理
+                    Operator.DIVIDE -> {
+                        val left = canonicalizeDenominatorOnly(node.left)
+                        val right = canonicalizeDenominatorOnly(node.right)
+                        MathNode.BinaryOp(Operator.DIVIDE, left, right)
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * 提取项但不展开幂运算
+     *
+     * 与 extractTerms() 的区别：
+     * - extractTerms() 会先完全展开
+     * - 这个方法只拍平加法树，不展开幂
+     */
+    private fun extractTermsWithoutExpanding(node: MathNode): List<MathTerm> {
+        val termNodes = flattenSum(node)
+        return termNodes.map { MathTerm.fromNode(it) }
+    }
+
+    /**
+     * 完全展开表达式（用于非分式）
+     */
     private fun fullyExpand(node: MathNode): MathNode {
         return when (node) {
             is MathNode.Number, is MathNode.Variable -> node
@@ -89,7 +192,11 @@ class ExpressionCanonicalizer {
         }
     }
 
+    /**
+     * 简化幂运算
+     */
     private fun simplifyPower(base: MathNode, exponent: MathNode): MathNode {
+        // 处理嵌套幂：(a^b)^c → a^(b×c)
         if (base is MathNode.BinaryOp && base.operator == Operator.POWER
             && base.right is MathNode.Number && exponent is MathNode.Number) {
             val innerExponent = base.right.value
@@ -108,6 +215,9 @@ class ExpressionCanonicalizer {
         return MathNode.BinaryOp(Operator.POWER, base, exponent)
     }
 
+    /**
+     * 展开乘法
+     */
     private fun expandMultiplication(left: MathNode, right: MathNode): MathNode {
         val leftIsSum = left is MathNode.BinaryOp && (left.operator == Operator.ADD || left.operator == Operator.SUBTRACT)
         val rightIsSum = right is MathNode.BinaryOp && (right.operator == Operator.ADD || right.operator == Operator.SUBTRACT)
@@ -149,6 +259,9 @@ class ExpressionCanonicalizer {
         }
     }
 
+    /**
+     * 乘两个简单项
+     */
     private fun multiplySimpleTerms(left: MathNode, right: MathNode): MathNode {
         if (left is MathNode.Number && right is MathNode.Number) {
             return MathNode.Number(left.value * right.value)
@@ -182,7 +295,6 @@ class ExpressionCanonicalizer {
                 newVariables[varName] = (newVariables[varName] ?: 0.0) + exponent
             }
 
-            // ✨✨✨ 修复：正确合并函数的指数 ✨✨✨
             val newFunctions = mutableMapOf<String, Double>()
             for ((funcKey, exponent) in leftTerm.functions) {
                 newFunctions[funcKey] = exponent
@@ -202,6 +314,9 @@ class ExpressionCanonicalizer {
         }
     }
 
+    /**
+     * 展开幂运算
+     */
     private fun expandPower(base: MathNode, exponent: MathNode): MathNode {
         if (exponent !is MathNode.Number) {
             return MathNode.BinaryOp(Operator.POWER, base, exponent)
@@ -217,6 +332,7 @@ class ExpressionCanonicalizer {
             return MathNode.Number(Math.pow(base.value, n))
         }
 
+        // 只展开小的整数幂
         if (n != n.toInt().toDouble() || n < 0 || n > 10) {
             return MathNode.BinaryOp(Operator.POWER, base, exponent)
         }
@@ -239,6 +355,9 @@ class ExpressionCanonicalizer {
         }
     }
 
+    /**
+     * 拍平加法树
+     */
     private fun flattenSum(node: MathNode): List<MathNode> {
         return when (node) {
             is MathNode.BinaryOp -> {
@@ -258,6 +377,9 @@ class ExpressionCanonicalizer {
         }
     }
 
+    /**
+     * 取负
+     */
     private fun negateTerm(term: MathNode): MathNode {
         return when (term) {
             is MathNode.Number -> MathNode.Number(-term.value)
@@ -276,6 +398,9 @@ class ExpressionCanonicalizer {
         }
     }
 
+    /**
+     * 构建加法表达式
+     */
     private fun buildSum(terms: List<MathNode>): MathNode {
         if (terms.isEmpty()) return MathNode.Number(0.0)
         if (terms.size == 1) return terms[0]
@@ -287,11 +412,17 @@ class ExpressionCanonicalizer {
         return result
     }
 
+    /**
+     * 提取项
+     */
     private fun extractTerms(node: MathNode): List<MathTerm> {
         val termNodes = flattenSum(node)
         return termNodes.map { MathTerm.fromNode(it) }
     }
 
+    /**
+     * 合并同类项
+     */
     private fun mergeTerms(terms: List<MathTerm>): List<MathTerm> {
         if (terms.isEmpty()) return emptyList()
 
@@ -328,6 +459,9 @@ class ExpressionCanonicalizer {
         return merged
     }
 
+    /**
+     * 排序项
+     */
     private fun sortTerms(terms: List<MathTerm>): List<MathTerm> {
         return terms.sortedWith(compareBy(
             { it.isConstant() },
@@ -336,10 +470,16 @@ class ExpressionCanonicalizer {
         ))
     }
 
+    /**
+     * 获取总次数
+     */
     private fun getTotalDegree(term: MathTerm): Double {
         return term.variables.values.sum()
     }
 
+    /**
+     * 构建表达式
+     */
     private fun buildExpression(terms: List<MathTerm>): MathNode {
         if (terms.isEmpty()) return MathNode.Number(0.0)
 
