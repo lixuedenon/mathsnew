@@ -1,5 +1,5 @@
 // app/src/main/java/com/mathsnew/mathsnew/newsimplified/MathTerm.kt
-// 数学项的规范化表示 (修复版本)
+// 数学项的规范化表示 (带调试日志版本)
 
 package com.mathsnew.mathsnew.newsimplified
 
@@ -157,16 +157,16 @@ data class MathTerm(
     fun isSimilarTo(other: MathTerm): Boolean {
         // ✅ 调试日志
         Log.d(TAG, "========== isSimilarTo ==========")
-        Log.d(TAG, "this: coeff=$coefficient, vars=$variables")
-        Log.d(TAG, "other: coeff=${other.coefficient}, vars=${other.variables}")
-
+        Log.d(TAG, "this: coeff=$coefficient, vars=$variables, funcs=${functions.keys}")
+        Log.d(TAG, "other: coeff=${other.coefficient}, vars=${other.variables}, funcs=${other.functions.keys}")
+        
         if (variables != other.variables) {
-            Log.d(TAG, "❌ 变量不同")
+            Log.d(TAG, "❌ 变量不同: $variables vs ${other.variables}")
             return false
         }
 
         if (functions.keys != other.functions.keys) {
-            Log.d(TAG, "❌ 函数键不同")
+            Log.d(TAG, "❌ 函数键不同: ${functions.keys} vs ${other.functions.keys}")
             return false
         }
 
@@ -174,7 +174,7 @@ data class MathTerm(
             Log.d(TAG, "❌ 嵌套表达式数量不同")
             return false
         }
-
+        
         if (nestedExpressions.zip(other.nestedExpressions).any { (e1, e2) -> e1.toString() != e2.toString() }) {
             Log.d(TAG, "❌ 嵌套表达式内容不同")
             return false
@@ -193,9 +193,10 @@ data class MathTerm(
             functions = this.functions,
             nestedExpressions = this.nestedExpressions
         )
-
+        
+        // ✅ 调试日志
         Log.d(TAG, "✅ 合并: $coefficient + ${other.coefficient} = ${merged.coefficient}")
-
+        
         return merged
     }
 
@@ -254,34 +255,12 @@ data class MathTerm(
     }
 
     fun getBaseKey(): String {
-        // ✅✅✅ 修复：去掉指数的小数点 ✅✅✅
         val varPart = variables.toSortedMap().entries.joinToString("*") { (v, e) ->
-            if (abs(e - 1.0) < EPSILON) {
-                v
-            } else {
-                // 去掉小数点
-                val exp = if (e == e.toLong().toDouble()) {
-                    e.toLong().toString()  // "2" 而不是 "2.0"
-                } else {
-                    e.toString()
-                }
-                "$v^$exp"
-            }
+            if (abs(e - 1.0) < EPSILON) v else "$v^$e"
         }
 
-        // ✅✅✅ 修复：去掉指数的小数点 ✅✅✅
         val funcPart = functions.entries.sortedBy { it.key }.joinToString("*") { (f, e) ->
-            if (abs(e - 1.0) < EPSILON) {
-                f
-            } else {
-                // 去掉小数点
-                val exp = if (e == e.toLong().toDouble()) {
-                    e.toLong().toString()  // "2" 而不是 "2.0"
-                } else {
-                    e.toString()
-                }
-                "$f^$exp"
-            }
+            if (abs(e - 1.0) < EPSILON) f else "$f^$e"
         }
 
         val nestedPart = nestedExpressions.joinToString("*") { it.toString() }
@@ -290,7 +269,8 @@ data class MathTerm(
             .filter { it.isNotEmpty() }
             .joinToString("*")
             .ifEmpty { "1" }
-
+        
+        // ✅ 调试日志
         Log.d(TAG, "getBaseKey: coeff=$coefficient → key='$key'")
         
         return key

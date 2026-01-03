@@ -1,5 +1,5 @@
 // app/src/main/java/com/mathsnew/mathsnew/newsimplified/ExpressionCanonicalizer.kt
-// 表达式规范化引擎 - 保证完全展开和合并同类项（修复嵌套分式版本）
+// 表达式规范化引擎 - 保证完全展开和合并同类项
 
 package com.mathsnew.mathsnew.newsimplified
 
@@ -76,11 +76,7 @@ class ExpressionCanonicalizer {
                     Operator.DIVIDE -> {
                         val left = fullyExpand(node.left)
                         val right = fullyExpand(node.right)
-
-                        // ✅✅✅ 新增：规范化分母 ✅✅✅
-                        val canonicalizedDenominator = canonicalizeDenominator(right)
-
-                        MathNode.BinaryOp(Operator.DIVIDE, left, canonicalizedDenominator)
+                        MathNode.BinaryOp(Operator.DIVIDE, left, right)
                     }
 
                     Operator.POWER -> {
@@ -90,40 +86,6 @@ class ExpressionCanonicalizer {
                     }
                 }
             }
-        }
-    }
-
-    // ✅✅✅ 新增方法：规范化分母 ✅✅✅
-    private fun canonicalizeDenominator(denominator: MathNode): MathNode {
-        return when {
-            // 如果分母是加减法，规范化它
-            denominator is MathNode.BinaryOp &&
-            (denominator.operator == Operator.ADD || denominator.operator == Operator.SUBTRACT) -> {
-                Log.d(TAG, "🔍 规范化分母: $denominator")
-
-                val terms = extractTerms(denominator)
-                Log.d(TAG, "  分母提取了 ${terms.size} 个项")
-
-                val merged = mergeTerms(terms)
-                Log.d(TAG, "  分母合并后 ${merged.size} 个项")
-
-                val sorted = sortTerms(merged)
-                val result = buildExpression(sorted)
-
-                Log.d(TAG, "✅ 规范化后的分母: $result")
-                result
-            }
-
-            // 如果分母本身是除法，递归规范化
-            denominator is MathNode.BinaryOp &&
-            denominator.operator == Operator.DIVIDE -> {
-                val left = canonicalizeDenominator(denominator.left)
-                val right = canonicalizeDenominator(denominator.right)
-                MathNode.BinaryOp(Operator.DIVIDE, left, right)
-            }
-
-            // 其他情况保持不变
-            else -> denominator
         }
     }
 
@@ -220,6 +182,7 @@ class ExpressionCanonicalizer {
                 newVariables[varName] = (newVariables[varName] ?: 0.0) + exponent
             }
 
+            // ✨✨✨ 修复：正确合并函数的指数 ✨✨✨
             val newFunctions = mutableMapOf<String, Double>()
             for ((funcKey, exponent) in leftTerm.functions) {
                 newFunctions[funcKey] = exponent
