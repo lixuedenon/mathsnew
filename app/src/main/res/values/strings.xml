@@ -25,6 +25,11 @@
     <string name="btn_backspace">Backspace</string>
     <string name="btn_show_steps">Show Steps</string>
 
+    <!-- ✅ 新增历史记录相关 -->
+    <string name="btn_history">History</string>
+    <string name="history_title">Calculation History</string>
+    <string name="history_empty">No calculation history</string>
+
     <string name="key_sin">sin</string>
     <string name="key_cos">cos</string>
     <string name="key_tan">tan</string>

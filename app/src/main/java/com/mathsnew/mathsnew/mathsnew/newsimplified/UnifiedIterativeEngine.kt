@@ -1,4 +1,5 @@
 // app/src/main/java/com/mathsnew/mathsnew/newsimplified/UnifiedIterativeEngine.kt
+// 统一迭代引擎（微调：移除 normalizeMultiplicationOrder，简化逻辑）
 
 package com.mathsnew.mathsnew.newsimplified
 
@@ -26,20 +27,19 @@ class UnifiedIterativeEngine {
         val forms = mutableListOf<SimplifiedForm>()
         val seen = mutableSetOf<String>()
 
-        // ✅ 每个策略的结果都规范化
-        val expanded = normalizeMultiplicationOrder(applyExpandStrategy(input))
+        val expanded = applyExpandStrategy(input)
         addIfUnique(expanded, SimplificationType.EXPANDED, "展开形式", forms, seen)
 
-        val trigForm = normalizeMultiplicationOrder(applyTrigStrategy(input))
+        val trigForm = applyTrigStrategy(input)
         addIfUnique(trigForm, SimplificationType.STRUCTURAL, "三角化简", forms, seen)
 
-        val factored = normalizeMultiplicationOrder(applyFactorStrategy(input))
+        val factored = applyFactorStrategy(input)
         addIfUnique(factored, SimplificationType.FACTORED, "因式分解", forms, seen)
 
-        val fractionForm = normalizeMultiplicationOrder(applyFractionStrategy(input))
+        val fractionForm = applyFractionStrategy(input)
         addIfUnique(fractionForm, SimplificationType.FACTORED, "分数约分", forms, seen)
 
-        val fullForm = normalizeMultiplicationOrder(applyFullStrategy(input))
+        val fullForm = applyFullStrategy(input)
         addIfUnique(fullForm, SimplificationType.FACTORED, "完全化简", forms, seen)
 
         ensureMinimumForms(forms, input, seen)
@@ -62,10 +62,6 @@ class UnifiedIterativeEngine {
 
             val before = current.toString()
             current = applySingleRound(current)
-
-            // ✅ 规范化乘法顺序（系数在前）
-            current = normalizeMultiplicationOrder(current)
-
             val after = current.toString()
 
             if (before == after) {
@@ -382,74 +378,6 @@ class UnifiedIterativeEngine {
             }
             is MathNode.Function -> MathNode.Function(node.name, simplifyPowers(node.argument))
             else -> node
-        }
-    }
-
-    /**
-     * 规范化乘法顺序：系数在前，变量在后
-     *
-     * 规则：
-     * - 数字 × 变量 → 保持
-     * - 变量 × 数字 → 交换为 数字 × 变量
-     * - 数字 × 函数 → 保持
-     * - 变量 × 函数 → 保持
-     *
-     * 优先级：数字 > 变量 > 函数 > 复杂表达式
-     */
-    private fun normalizeMultiplicationOrder(node: MathNode): MathNode {
-        return when (node) {
-            is MathNode.BinaryOp -> {
-                // 递归处理子节点
-                val left = normalizeMultiplicationOrder(node.left)
-                val right = normalizeMultiplicationOrder(node.right)
-
-                if (node.operator == Operator.MULTIPLY) {
-                    // 获取优先级
-                    val leftPriority = getMultiplicationPriority(left)
-                    val rightPriority = getMultiplicationPriority(right)
-
-                    // 如果左边优先级低于右边，交换
-                    if (leftPriority > rightPriority) {
-                        Log.d(TAG, "规范化乘法: ${left} × ${right} → ${right} × ${left}")
-                        return MathNode.BinaryOp(Operator.MULTIPLY, right, left)
-                    }
-                }
-
-                MathNode.BinaryOp(node.operator, left, right)
-            }
-            is MathNode.Function -> {
-                MathNode.Function(node.name, normalizeMultiplicationOrder(node.argument))
-            }
-            else -> node
-        }
-    }
-
-    /**
-     * 获取乘法中的优先级
-     *
-     * 优先级越低，应该越靠前
-     * 1 = 数字（最高优先级，最靠前）
-     * 2 = 变量
-     * 3 = 函数
-     * 4 = 复杂表达式（最低优先级，最靠后）
-     */
-    private fun getMultiplicationPriority(node: MathNode): Int {
-        return when (node) {
-            is MathNode.Number -> 1           // 数字优先级最高
-            is MathNode.Variable -> 2         // 变量次之
-            is MathNode.Function -> 3         // 函数再次
-            is MathNode.BinaryOp -> {
-                // 如果是幂运算，看底数
-                if (node.operator == Operator.POWER) {
-                    when (node.left) {
-                        is MathNode.Variable -> 2  // x^2 按变量处理
-                        is MathNode.Function -> 3  // sin^2(x) 按函数处理
-                        else -> 4
-                    }
-                } else {
-                    4  // 其他复杂表达式优先级最低
-                }
-            }
         }
     }
 }

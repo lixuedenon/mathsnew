@@ -1,6 +1,7 @@
 // app/src/main/java/com/mathsnew/mathsnew/newsimplified/ExpressionCanonicalizer.kt
 // 表达式规范化引擎 - 保证完全展开和合并同类项
 // 修改版：分子和分母都不完全展开，保留因式结构
+// ✅ 新增：分子中的加减法表达式会合并同类项
 
 package com.mathsnew.mathsnew.newsimplified
 
@@ -153,6 +154,8 @@ class ExpressionCanonicalizer {
 
     /**
      * 完全展开表达式（用于非分式）
+     * 
+     * ✅ 修改：对于除法，如果分子是加减法表达式，会合并同类项
      */
     private fun fullyExpand(node: MathNode): MathNode {
         return when (node) {
@@ -179,6 +182,38 @@ class ExpressionCanonicalizer {
                     Operator.DIVIDE -> {
                         val left = fullyExpand(node.left)
                         val right = fullyExpand(node.right)
+                        
+                        // ✅ 关键修改：如果分子是加减法表达式，尝试合并同类项
+                        if (left is MathNode.BinaryOp && 
+                            (left.operator == Operator.ADD || left.operator == Operator.SUBTRACT)) {
+                            
+                            Log.d(TAG, "⚠️ 检测到分子是加减法表达式，尝试合并同类项")
+                            
+                            try {
+                                // 提取分子中的所有项
+                                val terms = extractTerms(left)
+                                Log.d(TAG, "  分子提取了 ${terms.size} 个项")
+                                
+                                // 合并同类项
+                                val merged = mergeTerms(terms)
+                                Log.d(TAG, "  分子合并后剩 ${merged.size} 个项")
+                                
+                                if (merged.size < terms.size) {
+                                    // 重建分子
+                                    val sorted = sortTerms(merged)
+                                    val simplifiedNumerator = buildExpression(sorted)
+                                    
+                                    Log.d(TAG, "  ✅ 化简后的分子: $simplifiedNumerator")
+                                    
+                                    return MathNode.BinaryOp(Operator.DIVIDE, simplifiedNumerator, right)
+                                } else {
+                                    Log.d(TAG, "  ℹ️ 分子没有可合并的同类项")
+                                }
+                            } catch (e: Exception) {
+                                Log.e(TAG, "  ❌ 分子化简失败: ${e.message}")
+                            }
+                        }
+                        
                         MathNode.BinaryOp(Operator.DIVIDE, left, right)
                     }
 
@@ -426,6 +461,12 @@ class ExpressionCanonicalizer {
     private fun mergeTerms(terms: List<MathTerm>): List<MathTerm> {
         if (terms.isEmpty()) return emptyList()
 
+        Log.e(TAG, "!!!!! mergeTerms 被调用，有 ${terms.size} 个项 !!!!!")
+        
+        terms.forEachIndexed { index, term ->
+            Log.e(TAG, "项: coeff=${term.coefficient}, key='${term.getBaseKey()}'")
+        }
+
         val groups = mutableMapOf<String, MutableList<MathTerm>>()
 
         for (term in terms) {
@@ -434,6 +475,11 @@ class ExpressionCanonicalizer {
                 groups[key] = mutableListOf()
             }
             groups[key]!!.add(term)
+        }
+
+        Log.e(TAG, "分组后有 ${groups.size} 组")
+        for ((key, group) in groups) {
+            Log.e(TAG, "  组 '$key': ${group.size} 个项")
         }
 
         val merged = mutableListOf<MathTerm>()
@@ -445,7 +491,7 @@ class ExpressionCanonicalizer {
                 val mergeResult = combined.mergeWith(next)
                 if (mergeResult != null) {
                     combined = mergeResult
-                    Log.d(TAG, "合并同类项: $key")
+                    Log.e(TAG, "✅ 成功合并: $key")
                 } else {
                     Log.d(TAG, "无法合并（不是同类项）: ${combined.getBaseKey()} 和 ${next.getBaseKey()}")
                 }
@@ -455,6 +501,8 @@ class ExpressionCanonicalizer {
                 merged.add(combined)
             }
         }
+
+        Log.e(TAG, "合并后剩 ${merged.size} 个项")
 
         return merged
     }

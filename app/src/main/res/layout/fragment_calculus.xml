@@ -58,6 +58,17 @@
             app:tint="@color/text_white"
             android:layout_marginEnd="8dp" />
 
+        <!-- ✅ 历史按钮 -->
+        <ImageButton
+            android:id="@+id/btn_history"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@android:drawable/ic_menu_recent_history"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="历史"
+            app:tint="@color/text_white"
+            android:layout_marginEnd="8dp" />
+
         <ImageButton
             android:id="@+id/btn_show_steps"
             android:layout_width="40dp"
@@ -87,17 +98,44 @@
                 android:orientation="vertical"
                 android:padding="16dp">
 
+                <!-- ✅ EditText：用于输入阶段（有光标） -->
+                <EditText
+                    android:id="@+id/et_input"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="@string/display_hint"
+                    android:textSize="24sp"
+                    android:textColor="@color/text_primary"
+                    android:gravity="start|center_vertical"
+                    android:padding="16dp"
+                    android:minHeight="120dp"
+                    android:background="@drawable/display_border"
+                    android:inputType="textNoSuggestions"
+                    android:focusable="true"
+                    android:focusableInTouchMode="true"
+                    android:cursorVisible="true"
+                    android:textCursorDrawable="@null"
+                    android:scrollHorizontally="true"
+                    android:singleLine="true"
+                    android:maxLines="1"
+                    android:visibility="visible" />
+
+                <!-- ✅ TextView：用于结果阶段（无光标，多行） -->
                 <TextView
                     android:id="@+id/tv_display"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/display_hint"
                     android:textSize="24sp"
                     android:textColor="@color/text_primary"
-                    android:gravity="end|bottom"
+                    android:gravity="start|center_vertical"
                     android:padding="16dp"
                     android:minHeight="120dp"
-                    android:background="@drawable/display_border" />
+                    android:background="@drawable/display_border"
+                    android:scrollHorizontally="true"
+                    android:scrollbars="horizontal"
+                    android:focusable="false"
+                    android:maxLines="100"
+                    android:visibility="gone" />
 
                 <com.mathsnew.mathsnew.calculus.graph.CalculusGraphView
                     android:id="@+id/graph_view"

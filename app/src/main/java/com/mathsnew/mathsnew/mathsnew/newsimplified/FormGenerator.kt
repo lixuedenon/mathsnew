@@ -644,7 +644,6 @@ class FormGenerator {
     private fun divideTerm(term: MathTerm, divisor: MathTerm): MathTerm {
         val newCoeff = term.coefficient / divisor.coefficient
 
-        // 处理变量
         val newVars = term.variables.toMutableMap()
         for ((v, exp) in divisor.variables) {
             newVars[v] = (newVars[v] ?: 0.0) - exp
@@ -653,16 +652,7 @@ class FormGenerator {
             }
         }
 
-        // ✅ 处理函数（新增）
-        val newFuncs = term.functions.toMutableMap()
-        for ((f, exp) in divisor.functions) {
-            newFuncs[f] = (newFuncs[f] ?: 0.0) - exp
-            if (abs(newFuncs[f]!!) < EPSILON) {
-                newFuncs.remove(f)
-            }
-        }
-
-        return MathTerm(newCoeff, newVars, newFuncs, term.nestedExpressions)
+        return MathTerm(newCoeff, newVars, term.functions, term.nestedExpressions)
     }
 
     private fun extractTermsFromSum(node: MathNode): List<MathNode> {

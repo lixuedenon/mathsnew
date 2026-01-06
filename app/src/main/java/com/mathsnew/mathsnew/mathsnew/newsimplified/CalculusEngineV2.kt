@@ -34,7 +34,11 @@ class CalculusEngineV2 {
             val cleanedDerivative = cleanAST(rawDerivative)
             Log.d(TAG, "清理完成: $cleanedDerivative")
 
-            val canonicalDerivative = canonicalizer.canonicalize(cleanedDerivative)
+            Log.e(TAG, "!!!!! 开始深度规范化导数 !!!!!")
+            val deepCleaned = deepCanonicalizeAllFractions(cleanedDerivative)
+            Log.e(TAG, "深度规范化完成: $deepCleaned")
+
+            val canonicalDerivative = canonicalizer.canonicalize(deepCleaned)
             Log.d(TAG, "规范化完成: $canonicalDerivative")
 
             val allForms = unifiedEngine.generateMultipleForms(canonicalDerivative)
@@ -47,7 +51,12 @@ class CalculusEngineV2 {
             Log.d(TAG, "二阶导数: $rawSecondDerivative")
 
             val cleanedSecondDerivative = cleanAST(rawSecondDerivative)
-            val canonicalSecondDerivative = canonicalizer.canonicalize(cleanedSecondDerivative)
+
+            Log.e(TAG, "!!!!! 开始深度规范化二阶导数 !!!!!")
+            val deepCleanedSecond = deepCanonicalizeAllFractions(cleanedSecondDerivative)
+            Log.e(TAG, "深度规范化二阶导数完成: $deepCleanedSecond")
+
+            val canonicalSecondDerivative = canonicalizer.canonicalize(deepCleanedSecond)
             val secondDerivativeForms = unifiedEngine.generateMultipleForms(canonicalSecondDerivative)
 
             val endTime = System.currentTimeMillis()
@@ -68,6 +77,45 @@ class CalculusEngineV2 {
         } catch (e: Exception) {
             Log.e(TAG, "计算失败: ${e.message}", e)
             return CalculationResult.Error("计算错误: ${e.message}")
+        }
+    }
+
+    private fun deepCanonicalizeAllFractions(node: MathNode): MathNode {
+        Log.e(TAG, "深度规范化节点: $node")
+
+        return when (node) {
+            is MathNode.Number, is MathNode.Variable -> {
+                node
+            }
+
+            is MathNode.Function -> {
+                val cleanedArg = deepCanonicalizeAllFractions(node.argument)
+                MathNode.Function(node.name, cleanedArg)
+            }
+
+            is MathNode.BinaryOp -> {
+                when (node.operator) {
+                    Operator.DIVIDE -> {
+                        Log.e(TAG, "检测到分式，规范化分母")
+                        Log.e(TAG, "  分子: ${node.left}")
+                        Log.e(TAG, "  分母: ${node.right}")
+
+                        val numerator = deepCanonicalizeAllFractions(node.left)
+
+                        Log.e(TAG, "!!!!! 调用 canonicalize 规范化分母 !!!!!")
+                        val denominator = canonicalizer.canonicalize(node.right)
+                        Log.e(TAG, "分母规范化完成: $denominator")
+
+                        MathNode.BinaryOp(Operator.DIVIDE, numerator, denominator)
+                    }
+
+                    else -> {
+                        val left = deepCanonicalizeAllFractions(node.left)
+                        val right = deepCanonicalizeAllFractions(node.right)
+                        MathNode.BinaryOp(node.operator, left, right)
+                    }
+                }
+            }
         }
     }
 
