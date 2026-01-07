@@ -1,5 +1,5 @@
 // app/src/main/java/com/mathsnew/mathsnew/TrigonometricRules.kt
-// 三角函数微分规则
+// 三角函数微分规则（修复版 - 使用整数常量）
 
 package com.mathsnew.mathsnew
 
@@ -59,7 +59,7 @@ class CosRule : DerivativeRule {
         // 外层导数：-sin(u)
         val outerDerivative = MathNode.BinaryOp(
             operator = Operator.MULTIPLY,
-            left = MathNode.Number(-1.0),
+            left = MathNode.Number(-1),  // ✅ 修复：-1.0 → -1
             right = MathNode.Function("sin", innerNode)
         )
 
@@ -98,12 +98,12 @@ class TanRule : DerivativeRule {
         val cosSquared = MathNode.BinaryOp(
             operator = Operator.POWER,
             left = MathNode.Function("cos", innerNode),
-            right = MathNode.Number(2.0)
+            right = MathNode.Number(2)  // ✅ 修复：2.0 → 2
         )
 
         val outerDerivative = MathNode.BinaryOp(
             operator = Operator.DIVIDE,
-            left = MathNode.Number(1.0),
+            left = MathNode.Number(1),  // ✅ 修复：1.0 → 1
             right = cosSquared
         )
 

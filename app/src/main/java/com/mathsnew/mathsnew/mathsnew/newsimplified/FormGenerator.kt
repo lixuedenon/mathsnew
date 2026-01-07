@@ -188,13 +188,13 @@ class FormGenerator {
 
             if (remainingNum.size < numFactors.size || remainingDen.size < denFactors.size) {
                 val newNum = if (remainingNum.isEmpty()) {
-                    MathNode.Number(1.0)
+                    MathNode.Number(1)
                 } else {
                     buildProduct(remainingNum)
                 }
 
                 val newDen = if (remainingDen.isEmpty()) {
-                    MathNode.Number(1.0)
+                    MathNode.Number(1)
                 } else {
                     buildProduct(remainingDen)
                 }
@@ -290,7 +290,7 @@ class FormGenerator {
         return MathNode.BinaryOp(
             Operator.POWER,
             innerSum,
-            MathNode.Number(n.toDouble())
+            MathNode.Number(n)
         )
     }
 
@@ -359,13 +359,13 @@ class FormGenerator {
             Log.d(TAG, "约去了 ${commonFactors.size} 个公因子")
 
             val newNum = if (remainingNum.isEmpty()) {
-                MathNode.Number(1.0)
+                MathNode.Number(1)
             } else {
                 buildProduct(remainingNum)
             }
 
             val newDen = if (remainingDen.isEmpty()) {
-                MathNode.Number(1.0)
+                MathNode.Number(1)
             } else {
                 buildProduct(remainingDen)
             }
@@ -385,7 +385,16 @@ class FormGenerator {
         val remaining: MathNode
     )
 
+    /**
+     * ✅ 项目6：增强的幂次约分
+     *
+     * 支持的模式：
+     * 1. base^a / base^b → base^(a-b) 或 1/base^(b-a)
+     * 2. base / base^b → 1/base^(b-1)
+     * 3. base^a / base → base^(a-1)
+     */
     private fun tryPowerCancellation(num: MathNode, den: MathNode): PowerCancellationResult? {
+        // 情况1: num^a / den^b (both powers with same base)
         if (num is MathNode.BinaryOp && num.operator == Operator.POWER &&
             den is MathNode.BinaryOp && den.operator == Operator.POWER &&
             num.right is MathNode.Number && den.right is MathNode.Number) {
@@ -396,20 +405,25 @@ class FormGenerator {
                 val remaining = denExp - numExp
 
                 if (remaining > EPSILON) {
+                    // denExp > numExp: 分母剩余幂次
                     return PowerCancellationResult(
                         false,
                         MathNode.BinaryOp(Operator.POWER, den.left, MathNode.Number(remaining))
                     )
                 } else if (abs(remaining) < EPSILON) {
-                    return PowerCancellationResult(true, MathNode.Number(1.0))
+                    // denExp == numExp: 完全约分
+                    return PowerCancellationResult(true, MathNode.Number(1))
                 }
+                // remaining < 0 意味着 numExp > denExp，不在这里处理（会在下面反向约分）
             }
         }
 
+        // 情况2: num / den^b (denominator is power)
         if (den is MathNode.BinaryOp && den.operator == Operator.POWER &&
             den.right is MathNode.Number) {
 
             if (isEquivalentString(num, den.left)) {
+                // num = base, den = base^b → base / base^b = 1/base^(b-1)
                 val denExp = den.right.value
                 val remaining = denExp - 1.0
 
@@ -421,15 +435,18 @@ class FormGenerator {
                 } else if (abs(remaining - 1.0) < EPSILON) {
                     return PowerCancellationResult(false, den.left)
                 } else if (abs(remaining) < EPSILON) {
-                    return PowerCancellationResult(true, MathNode.Number(1.0))
+                    return PowerCancellationResult(true, MathNode.Number(1))
                 }
             }
         }
 
+        // 情况3: num^a / den (numerator is power, denominator is base)
         if (num is MathNode.BinaryOp && num.operator == Operator.POWER &&
             num.right is MathNode.Number) {
 
             if (isEquivalentString(num.left, den)) {
+                // num = base^a, den = base → base^a / base = base^(a-1)
+                // 这种情况不约分到分母，返回 null（让上层处理）
                 return null
             }
         }
@@ -458,7 +475,7 @@ class FormGenerator {
     }
 
     private fun buildProduct(factors: List<MathNode>): MathNode {
-        if (factors.isEmpty()) return MathNode.Number(1.0)
+        if (factors.isEmpty()) return MathNode.Number(1)
         if (factors.size == 1) return factors[0]
 
         var result = factors[0]
@@ -542,7 +559,7 @@ class FormGenerator {
             }
         }
 
-        // ✅ 检查函数公因子（新增）
+        // ✅ 检查函数公因子
         for ((funcName, gcdExp) in gcd.functions) {
             Log.d(TAG, "检查函数公因子: $funcName, 需要指数: $gcdExp")
             for (term in terms) {
@@ -568,6 +585,9 @@ class FormGenerator {
         return MathNode.BinaryOp(Operator.MULTIPLY, gcd.toNode(), sumNode)
     }
 
+    /**
+     * ✅ 项目7：完善 findGCD，支持函数公因子
+     */
     private fun findGCD(terms: List<MathTerm>): MathTerm {
         Log.d(TAG, "========== findGCD ==========")
         if (terms.isEmpty()) return MathTerm(1.0, emptyMap(), emptyMap(), emptyList())
@@ -596,7 +616,7 @@ class FormGenerator {
             }
         }
 
-        // ✅ 新增：处理函数公因子
+        // ✅ 项目7：处理函数公因子
         val allFuncs = terms.flatMap { it.functions.keys }.toSet()
         Log.d(TAG, "所有函数: $allFuncs")
 
@@ -641,6 +661,9 @@ class FormGenerator {
         return x.toDouble()
     }
 
+    /**
+     * ✅ 项目7：完善 divideTerm，支持函数的除法
+     */
     private fun divideTerm(term: MathTerm, divisor: MathTerm): MathTerm {
         val newCoeff = term.coefficient / divisor.coefficient
 
@@ -652,7 +675,16 @@ class FormGenerator {
             }
         }
 
-        return MathTerm(newCoeff, newVars, term.functions, term.nestedExpressions)
+        // ✅ 新增：处理函数的除法
+        val newFuncs = term.functions.toMutableMap()
+        for ((f, exp) in divisor.functions) {
+            newFuncs[f] = (newFuncs[f] ?: 0.0) - exp
+            if (abs(newFuncs[f]!!) < EPSILON) {
+                newFuncs.remove(f)
+            }
+        }
+
+        return MathTerm(newCoeff, newVars, newFuncs, term.nestedExpressions)
     }
 
     private fun extractTermsFromSum(node: MathNode): List<MathNode> {
@@ -662,7 +694,7 @@ class FormGenerator {
                     extractTermsFromSum(node.left) + extractTermsFromSum(node.right)
                 } else if (node.operator == Operator.SUBTRACT) {
                     extractTermsFromSum(node.left) + listOf(
-                        MathNode.BinaryOp(Operator.MULTIPLY, MathNode.Number(-1.0), node.right)
+                        MathNode.BinaryOp(Operator.MULTIPLY, MathNode.Number(-1), node.right)
                     )
                 } else {
                     listOf(node)
@@ -673,7 +705,7 @@ class FormGenerator {
     }
 
     private fun buildSum(terms: List<MathNode>): MathNode {
-        if (terms.isEmpty()) return MathNode.Number(0.0)
+        if (terms.isEmpty()) return MathNode.Number(0)
         if (terms.size == 1) return terms[0]
 
         var result = terms[0]

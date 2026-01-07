@@ -187,7 +187,7 @@ data class MathTerm(
     }
 
     fun toNode(): MathNode {
-        if (isZero()) return MathNode.Number(0.0)
+        if (isZero()) return MathNode.Number(0)
 
         val parts = mutableListOf<MathNode>()
 
@@ -198,7 +198,13 @@ data class MathTerm(
             val withExponent = if (abs(exponent - 1.0) < EPSILON) {
                 varNode
             } else {
-                MathNode.BinaryOp(Operator.POWER, varNode, MathNode.Number(exponent))
+                // ✅ 修复：指数智能转换
+                val expNumber = if (abs(exponent - exponent.toLong().toDouble()) < EPSILON) {
+                    MathNode.Number(exponent.toLong().toInt())
+                } else {
+                    MathNode.Number(exponent)
+                }
+                MathNode.BinaryOp(Operator.POWER, varNode, expNumber)
             }
             parts.add(withExponent)
         }
@@ -211,7 +217,13 @@ data class MathTerm(
             val withExponent = if (abs(exponent - 1.0) < EPSILON) {
                 funcNode
             } else {
-                MathNode.BinaryOp(Operator.POWER, funcNode, MathNode.Number(exponent))
+                // ✅ 修复：指数智能转换
+                val expNumber = if (abs(exponent - exponent.toLong().toDouble()) < EPSILON) {
+                    MathNode.Number(exponent.toLong().toInt())
+                } else {
+                    MathNode.Number(exponent)
+                }
+                MathNode.BinaryOp(Operator.POWER, funcNode, expNumber)
             }
             parts.add(withExponent)
         }
@@ -219,7 +231,12 @@ data class MathTerm(
         parts.addAll(nestedExpressions)
 
         if (parts.isEmpty()) {
-            return MathNode.Number(coefficient)
+            // ✅ 修复：系数智能转换
+            return if (abs(coefficient - coefficient.toLong().toDouble()) < EPSILON) {
+                MathNode.Number(coefficient.toLong().toInt())
+            } else {
+                MathNode.Number(coefficient)
+            }
         }
 
         var result = parts[0]
@@ -232,10 +249,16 @@ data class MathTerm(
                 result
             }
             abs(coefficient + 1.0) < EPSILON -> {
-                MathNode.BinaryOp(Operator.MULTIPLY, MathNode.Number(-1.0), result)
+                MathNode.BinaryOp(Operator.MULTIPLY, MathNode.Number(-1), result)
             }
             else -> {
-                MathNode.BinaryOp(Operator.MULTIPLY, MathNode.Number(coefficient), result)
+                // ✅ 修复：系数智能转换
+                val coeffNumber = if (abs(coefficient - coefficient.toLong().toDouble()) < EPSILON) {
+                    MathNode.Number(coefficient.toLong().toInt())
+                } else {
+                    MathNode.Number(coefficient)
+                }
+                MathNode.BinaryOp(Operator.MULTIPLY, coeffNumber, result)
             }
         }
     }

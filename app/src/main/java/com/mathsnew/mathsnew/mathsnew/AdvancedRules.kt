@@ -1,5 +1,5 @@
 // app/src/main/java/com/mathsnew/mathsnew/AdvancedRules.kt
-// 高级微分规则（完整版 - 包含 CompositePowerRule）
+// 高级微分规则（修复版 - 使用整数常量）
 
 package com.mathsnew.mathsnew
 
@@ -41,7 +41,7 @@ class CompositePowerRule : DerivativeRule {
         val uPrime = calculator.differentiate(u, variable)
 
         // 构建 n × (f(x))^(n-1) × f'(x)
-        val newExponent = MathNode.Number(n - 1.0)
+        val newExponent = MathNode.Number(n - 1)  // ✅ Kotlin自动处理 Double - Int
         val power = MathNode.BinaryOp(Operator.POWER, u, newExponent)
         val coefficient = MathNode.Number(n)
 
@@ -95,7 +95,7 @@ class QuotientRule : DerivativeRule {
         val denominator = MathNode.BinaryOp(
             Operator.POWER,
             v,
-            MathNode.Number(2.0)
+            MathNode.Number(2)  // ✅ 修复：2.0 → 2
         )
 
         val result = MathNode.BinaryOp(Operator.DIVIDE, numerator, denominator)
@@ -176,7 +176,7 @@ class LogRule : DerivativeRule {
         val denominator = MathNode.BinaryOp(
             Operator.MULTIPLY,
             u,
-            MathNode.Number(Math.log(10.0))
+            MathNode.Number(Math.log(10.0))  // ✅ 这里必须保持浮点数，因为ln(10)是无理数
         )
 
         return MathNode.BinaryOp(Operator.DIVIDE, uPrime, denominator)
@@ -201,7 +201,7 @@ class SqrtRule : DerivativeRule {
 
         val denominator = MathNode.BinaryOp(
             Operator.MULTIPLY,
-            MathNode.Number(2.0),
+            MathNode.Number(2),  // ✅ 修复：2.0 → 2
             node
         )
 

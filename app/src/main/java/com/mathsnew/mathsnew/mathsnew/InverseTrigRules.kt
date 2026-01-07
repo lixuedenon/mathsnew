@@ -1,5 +1,5 @@
 // app/src/main/java/com/mathsnew/mathsnew/InverseTrigRules.kt
-// 反三角函数微分规则
+// 反三角函数微分规则（修复版 - 使用整数常量）
 
 package com.mathsnew.mathsnew
 
@@ -30,12 +30,12 @@ class ArcsinRule : DerivativeRule {
         val uSquared = MathNode.BinaryOp(
             operator = Operator.POWER,
             left = innerNode,
-            right = MathNode.Number(2.0)
+            right = MathNode.Number(2)  // ✅ 修复：2.0 → 2
         )
 
         val oneMinusUSquared = MathNode.BinaryOp(
             operator = Operator.SUBTRACT,
-            left = MathNode.Number(1.0),
+            left = MathNode.Number(1),  // ✅ 修复：1.0 → 1
             right = uSquared
         )
 
@@ -76,12 +76,12 @@ class ArccosRule : DerivativeRule {
         val uSquared = MathNode.BinaryOp(
             operator = Operator.POWER,
             left = innerNode,
-            right = MathNode.Number(2.0)
+            right = MathNode.Number(2)  // ✅ 修复：2.0 → 2
         )
 
         val oneMinusUSquared = MathNode.BinaryOp(
             operator = Operator.SUBTRACT,
-            left = MathNode.Number(1.0),
+            left = MathNode.Number(1),  // ✅ 修复：1.0 → 1
             right = uSquared
         )
 
@@ -91,7 +91,7 @@ class ArccosRule : DerivativeRule {
 
         val negativeUPrime = MathNode.BinaryOp(
             operator = Operator.MULTIPLY,
-            left = MathNode.Number(-1.0),
+            left = MathNode.Number(-1),  // ✅ 修复：-1.0 → -1
             right = uPrime
         )
 
@@ -130,12 +130,12 @@ class ArctanRule : DerivativeRule {
         val uSquared = MathNode.BinaryOp(
             operator = Operator.POWER,
             left = innerNode,
-            right = MathNode.Number(2.0)
+            right = MathNode.Number(2)  // ✅ 修复：2.0 → 2
         )
 
         val onePlusUSquared = MathNode.BinaryOp(
             operator = Operator.ADD,
-            left = MathNode.Number(1.0),
+            left = MathNode.Number(1),  // ✅ 修复：1.0 → 1
             right = uSquared
         )
 
@@ -174,18 +174,18 @@ class ArccotRule : DerivativeRule {
         val uSquared = MathNode.BinaryOp(
             operator = Operator.POWER,
             left = innerNode,
-            right = MathNode.Number(2.0)
+            right = MathNode.Number(2)  // ✅ 修复：2.0 → 2
         )
 
         val onePlusUSquared = MathNode.BinaryOp(
             operator = Operator.ADD,
-            left = MathNode.Number(1.0),
+            left = MathNode.Number(1),  // ✅ 修复：1.0 → 1
             right = uSquared
         )
 
         val negativeUPrime = MathNode.BinaryOp(
             operator = Operator.MULTIPLY,
-            left = MathNode.Number(-1.0),
+            left = MathNode.Number(-1),  // ✅ 修复：-1.0 → -1
             right = uPrime
         )
 
@@ -226,13 +226,13 @@ class ArcsecRule : DerivativeRule {
         val uSquared = MathNode.BinaryOp(
             operator = Operator.POWER,
             left = innerNode,
-            right = MathNode.Number(2.0)
+            right = MathNode.Number(2)  // ✅ 修复：2.0 → 2
         )
 
         val uSquaredMinusOne = MathNode.BinaryOp(
             operator = Operator.SUBTRACT,
             left = uSquared,
-            right = MathNode.Number(1.0)
+            right = MathNode.Number(1)  // ✅ 修复：1.0 → 1
         )
 
         val sqrtTerm = MathNode.Function("sqrt", uSquaredMinusOne)
@@ -280,13 +280,13 @@ class ArccscRule : DerivativeRule {
         val uSquared = MathNode.BinaryOp(
             operator = Operator.POWER,
             left = innerNode,
-            right = MathNode.Number(2.0)
+            right = MathNode.Number(2)  // ✅ 修复：2.0 → 2
         )
 
         val uSquaredMinusOne = MathNode.BinaryOp(
             operator = Operator.SUBTRACT,
             left = uSquared,
-            right = MathNode.Number(1.0)
+            right = MathNode.Number(1)  // ✅ 修复：1.0 → 1
         )
 
         val sqrtTerm = MathNode.Function("sqrt", uSquaredMinusOne)
@@ -299,7 +299,7 @@ class ArccscRule : DerivativeRule {
 
         val negativeUPrime = MathNode.BinaryOp(
             operator = Operator.MULTIPLY,
-            left = MathNode.Number(-1.0),
+            left = MathNode.Number(-1),  // ✅ 修复：-1.0 → -1
             right = uPrime
         )
 

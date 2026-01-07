@@ -1,5 +1,5 @@
 // app/src/main/java/com/mathsnew/mathsnew/ExtendedTrigRules.kt
-// 扩展三角函数微分规则：余切、正割、余割
+// 扩展三角函数微分规则：余切、正割、余割（修复版 - 使用整数常量）
 
 package com.mathsnew.mathsnew
 
@@ -26,12 +26,12 @@ class CotRule : DerivativeRule {
         val sinSquared = MathNode.BinaryOp(
             operator = Operator.POWER,
             left = MathNode.Function("sin", innerNode),
-            right = MathNode.Number(2.0)
+            right = MathNode.Number(2)  // ✅ 修复：2.0 → 2
         )
 
         val outerDerivative = MathNode.BinaryOp(
             operator = Operator.DIVIDE,
-            left = MathNode.Number(-1.0),
+            left = MathNode.Number(-1),  // ✅ 修复：-1.0 → -1
             right = sinSquared
         )
 
@@ -69,7 +69,7 @@ class SecRule : DerivativeRule {
         // sec(u) = 1/cos(u)
         val secU = MathNode.BinaryOp(
             operator = Operator.DIVIDE,
-            left = MathNode.Number(1.0),
+            left = MathNode.Number(1),  // ✅ 修复：1.0 → 1
             right = MathNode.Function("cos", innerNode)
         )
 
@@ -121,7 +121,7 @@ class CscRule : DerivativeRule {
         // csc(u) = 1/sin(u)
         val cscU = MathNode.BinaryOp(
             operator = Operator.DIVIDE,
-            left = MathNode.Number(1.0),
+            left = MathNode.Number(1),  // ✅ 修复：1.0 → 1
             right = MathNode.Function("sin", innerNode)
         )
 
@@ -135,7 +135,7 @@ class CscRule : DerivativeRule {
         // -csc(u) × cot(u)
         val negativeCsc = MathNode.BinaryOp(
             operator = Operator.MULTIPLY,
-            left = MathNode.Number(-1.0),
+            left = MathNode.Number(-1),  // ✅ 修复：-1.0 → -1
             right = cscU
         )
 

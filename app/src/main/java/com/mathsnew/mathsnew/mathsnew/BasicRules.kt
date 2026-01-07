@@ -1,5 +1,5 @@
 // app/src/main/java/com/mathsnew/mathsnew/BasicRules.kt
-// 基础微分规则
+// 基础微分规则（修复版 - 使用整数常量）
 
 package com.mathsnew.mathsnew
 
@@ -17,7 +17,7 @@ class ConstantRule : DerivativeRule {
     }
 
     override fun apply(node: MathNode, variable: String, calculator: DerivativeCalculator): MathNode {
-        return MathNode.Number(0.0)
+        return MathNode.Number(0)  // ✅ 修复：0.0 → 0
     }
 }
 
@@ -41,9 +41,9 @@ class VariableRule : DerivativeRule {
     override fun apply(node: MathNode, variable: String, calculator: DerivativeCalculator): MathNode {
         val varNode = node as MathNode.Variable
         return if (varNode.name == variable) {
-            MathNode.Number(1.0)
+            MathNode.Number(1)  // ✅ 修复：1.0 → 1
         } else {
-            MathNode.Number(0.0)
+            MathNode.Number(0)  // ✅ 修复：0.0 → 0
         }
     }
 }
@@ -73,12 +73,12 @@ class PowerRule : DerivativeRule {
 
         // 特殊情况：x^1 → 1
         if (exponent == 1.0) {
-            return MathNode.Number(1.0)
+            return MathNode.Number(1)  // ✅ 修复：1.0 → 1
         }
 
         // 特殊情况：x^0 → 0
         if (exponent == 0.0) {
-            return MathNode.Number(0.0)
+            return MathNode.Number(0)  // ✅ 修复：0.0 → 0
         }
 
         // 一般情况：x^n → n * x^(n-1)
@@ -88,7 +88,7 @@ class PowerRule : DerivativeRule {
             right = MathNode.BinaryOp(
                 operator = Operator.POWER,
                 left = powerNode.left,
-                right = MathNode.Number(exponent - 1.0)
+                right = MathNode.Number(exponent - 1)  // ✅ Kotlin会自动处理 Double - Int
             )
         )
     }

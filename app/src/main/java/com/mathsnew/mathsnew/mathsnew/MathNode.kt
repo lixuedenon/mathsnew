@@ -1,19 +1,38 @@
 // app/src/main/java/com/mathsnew/mathsnew/MathNode.kt
-// AST节点定义（智能括号版本 + 负号优化）
+// AST节点定义（调试版 - 带详细日志）
 
 package com.mathsnew.mathsnew
 
+import android.util.Log
 import kotlin.math.abs
 
 sealed class MathNode {
     data class Number(val value: Double) : MathNode() {
+        // ✅ 次构造函数：接受Int
+        constructor(value: Int) : this(value.toDouble()) {
+            Log.d("MathNode.Number", "📊 创建(Int构造): value=$value → ${value.toDouble()}")
+        }
+
+        // ✅ 主构造函数会自动调用（data class特性）
+        init {
+            Log.d("MathNode.Number", "📊 创建(主构造): value=$value")
+        }
+
         override fun toString(): String {
-            // ✅ 修复：如果是整数，不显示小数点
-            return if (value == value.toLong().toDouble()) {
-                value.toLong().toString()  // 3, 6, 12
+            val result = if (value == value.toLong().toDouble()) {
+                value.toLong().toString()
             } else {
-                value.toString()  // 3.14, 2.5
+                value.toString()
             }
+
+            // 🔍 关键日志：追踪哪些数字被格式化
+            if (result.contains(".")) {
+                Log.e("MathNode.Number", "⚠️ toString产生小数: value=$value → result='$result'")
+            } else if (value.toString().contains(".")) {
+                Log.d("MathNode.Number", "✅ toString整数化: value=$value → result='$result'")
+            }
+
+            return result
         }
     }
 

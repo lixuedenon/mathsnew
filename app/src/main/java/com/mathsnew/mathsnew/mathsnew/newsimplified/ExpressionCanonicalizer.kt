@@ -2,6 +2,7 @@
 // 表达式规范化引擎 - 保证完全展开和合并同类项
 // 修改版：分子和分母都不完全展开，保留因式结构
 // ✅ 新增：分子中的加减法表达式会合并同类项
+// ✅ 方案2：预处理分子，展开嵌套除法以便提取公因子
 
 package com.mathsnew.mathsnew.newsimplified
 
@@ -21,7 +22,7 @@ class ExpressionCanonicalizer {
      *
      * 策略：
      * 1. 如果是分式，分别处理分子和分母
-     *    - 分子：只合并同类项，不展开幂运算
+     *    - 分子：先预处理（展开嵌套除法），再合并同类项
      *    - 分母：只合并同类项，不展开幂运算
      * 2. 如果不是分式，完全展开 + 合并同类项
      */
@@ -32,8 +33,12 @@ class ExpressionCanonicalizer {
         if (node is MathNode.BinaryOp && node.operator == Operator.DIVIDE) {
             Log.d(TAG, "检测到分式，分别处理分子和分母")
 
-            // ⚠️ 关键修改：分子也不完全展开，只合并同类项
-            val numerator = canonicalizeNonFraction(node.left)
+            // ✅ 方案2：预处理分子，展开嵌套除法
+            val preprocessed = preprocessNumeratorForFactoring(node.left)
+            Log.d(TAG, "分子预处理后: $preprocessed")
+
+            // 分子：只合并同类项，不展开幂运算
+            val numerator = canonicalizeNonFraction(preprocessed)
             Log.d(TAG, "分子规范化完成: $numerator")
 
             // 分母：只合并同类项，不展开幂运算（保留因式结构）
@@ -49,6 +54,77 @@ class ExpressionCanonicalizer {
         val result = canonicalizeNonFraction(node)
         Log.d(TAG, "========== 规范化完成 ==========")
         return result
+    }
+
+    /**
+     * ✅ 方案2核心：预处理分子，展开嵌套除法
+     *
+     * 目标：将 (a×b)/c 形式转换为 a×b×(1/c)
+     * 这样 a 和 b 就暴露在顶层，可以被 extractCommonFactor 识别
+     *
+     * 示例：
+     * 输入：exp(x)³ + (exp(x)×(-2×x-12))/(x⁴+...) - 2×exp(x)³
+     * 输出：exp(x)³ + exp(x)×(-2×x-12)×(1/(x⁴+...)) - 2×exp(x)³
+     */
+    private fun preprocessNumeratorForFactoring(node: MathNode): MathNode {
+        Log.d(TAG, "========== 预处理分子（展开嵌套除法） ==========")
+        Log.d(TAG, "输入: $node")
+
+        return when (node) {
+            is MathNode.Number, is MathNode.Variable, is MathNode.Function -> {
+                node
+            }
+
+            is MathNode.BinaryOp -> {
+                when (node.operator) {
+                    // 递归处理加法和减法
+                    Operator.ADD, Operator.SUBTRACT -> {
+                        val left = preprocessNumeratorForFactoring(node.left)
+                        val right = preprocessNumeratorForFactoring(node.right)
+                        MathNode.BinaryOp(node.operator, left, right)
+                    }
+
+                    // 递归处理乘法
+                    Operator.MULTIPLY -> {
+                        val left = preprocessNumeratorForFactoring(node.left)
+                        val right = preprocessNumeratorForFactoring(node.right)
+                        MathNode.BinaryOp(Operator.MULTIPLY, left, right)
+                    }
+
+                    // ✅ 关键：展开除法 a/b → a×(1/b)
+                    Operator.DIVIDE -> {
+                        Log.d(TAG, "  发现嵌套除法: $node")
+
+                        val numerator = preprocessNumeratorForFactoring(node.left)
+                        val denominator = node.right  // 分母保持原样
+
+                        // 创建 1/denominator
+                        val reciprocal = MathNode.BinaryOp(
+                            Operator.DIVIDE,
+                            MathNode.Number(1),
+                            denominator
+                        )
+
+                        // 转换为 numerator × (1/denominator)
+                        val result = MathNode.BinaryOp(
+                            Operator.MULTIPLY,
+                            numerator,
+                            reciprocal
+                        )
+
+                        Log.d(TAG, "  展开为: $result")
+                        result
+                    }
+
+                    // 幂运算保持不变
+                    Operator.POWER -> {
+                        val base = preprocessNumeratorForFactoring(node.left)
+                        val exponent = preprocessNumeratorForFactoring(node.right)
+                        MathNode.BinaryOp(Operator.POWER, base, exponent)
+                    }
+                }
+            }
+        }
     }
 
     /**
@@ -154,7 +230,7 @@ class ExpressionCanonicalizer {
 
     /**
      * 完全展开表达式（用于非分式）
-     * 
+     *
      * ✅ 修改：对于除法，如果分子是加减法表达式，会合并同类项
      */
     private fun fullyExpand(node: MathNode): MathNode {
@@ -182,29 +258,29 @@ class ExpressionCanonicalizer {
                     Operator.DIVIDE -> {
                         val left = fullyExpand(node.left)
                         val right = fullyExpand(node.right)
-                        
+
                         // ✅ 关键修改：如果分子是加减法表达式，尝试合并同类项
-                        if (left is MathNode.BinaryOp && 
+                        if (left is MathNode.BinaryOp &&
                             (left.operator == Operator.ADD || left.operator == Operator.SUBTRACT)) {
-                            
+
                             Log.d(TAG, "⚠️ 检测到分子是加减法表达式，尝试合并同类项")
-                            
+
                             try {
                                 // 提取分子中的所有项
                                 val terms = extractTerms(left)
                                 Log.d(TAG, "  分子提取了 ${terms.size} 个项")
-                                
+
                                 // 合并同类项
                                 val merged = mergeTerms(terms)
                                 Log.d(TAG, "  分子合并后剩 ${merged.size} 个项")
-                                
+
                                 if (merged.size < terms.size) {
                                     // 重建分子
                                     val sorted = sortTerms(merged)
                                     val simplifiedNumerator = buildExpression(sorted)
-                                    
+
                                     Log.d(TAG, "  ✅ 化简后的分子: $simplifiedNumerator")
-                                    
+
                                     return MathNode.BinaryOp(Operator.DIVIDE, simplifiedNumerator, right)
                                 } else {
                                     Log.d(TAG, "  ℹ️ 分子没有可合并的同类项")
@@ -213,7 +289,7 @@ class ExpressionCanonicalizer {
                                 Log.e(TAG, "  ❌ 分子化简失败: ${e.message}")
                             }
                         }
-                        
+
                         MathNode.BinaryOp(Operator.DIVIDE, left, right)
                     }
 
@@ -303,10 +379,10 @@ class ExpressionCanonicalizer {
         }
 
         if (left is MathNode.Number && abs(left.value) < EPSILON) {
-            return MathNode.Number(0.0)
+            return MathNode.Number(0)
         }
         if (right is MathNode.Number && abs(right.value) < EPSILON) {
-            return MathNode.Number(0.0)
+            return MathNode.Number(0)
         }
 
         if (left is MathNode.Number && abs(left.value - 1.0) < EPSILON) {
@@ -375,7 +451,7 @@ class ExpressionCanonicalizer {
         val intN = n.toInt()
 
         return when {
-            intN == 0 -> MathNode.Number(1.0)
+            intN == 0 -> MathNode.Number(1)
             intN == 1 -> base
             base is MathNode.BinaryOp && (base.operator == Operator.ADD || base.operator == Operator.SUBTRACT) -> {
                 var result = base
@@ -426,10 +502,10 @@ class ExpressionCanonicalizer {
                         term.right
                     )
                 } else {
-                    MathNode.BinaryOp(Operator.MULTIPLY, MathNode.Number(-1.0), term)
+                    MathNode.BinaryOp(Operator.MULTIPLY, MathNode.Number(-1), term)
                 }
             }
-            else -> MathNode.BinaryOp(Operator.MULTIPLY, MathNode.Number(-1.0), term)
+            else -> MathNode.BinaryOp(Operator.MULTIPLY, MathNode.Number(-1), term)
         }
     }
 
@@ -437,7 +513,7 @@ class ExpressionCanonicalizer {
      * 构建加法表达式
      */
     private fun buildSum(terms: List<MathNode>): MathNode {
-        if (terms.isEmpty()) return MathNode.Number(0.0)
+        if (terms.isEmpty()) return MathNode.Number(0)
         if (terms.size == 1) return terms[0]
 
         var result = terms[0]
@@ -462,9 +538,9 @@ class ExpressionCanonicalizer {
         if (terms.isEmpty()) return emptyList()
 
         Log.e(TAG, "!!!!! mergeTerms 被调用，有 ${terms.size} 个项 !!!!!")
-        
+
         terms.forEachIndexed { index, term ->
-            Log.e(TAG, "项: coeff=${term.coefficient}, key='${term.getBaseKey()}'")
+            Log.e(TAG, "项$index: coeff=${term.coefficient}, key='${term.getBaseKey()}'")
         }
 
         val groups = mutableMapOf<String, MutableList<MathTerm>>()
@@ -529,7 +605,7 @@ class ExpressionCanonicalizer {
      * 构建表达式
      */
     private fun buildExpression(terms: List<MathTerm>): MathNode {
-        if (terms.isEmpty()) return MathNode.Number(0.0)
+        if (terms.isEmpty()) return MathNode.Number(0)
 
         val nodes = terms.map { it.toNode() }
 
