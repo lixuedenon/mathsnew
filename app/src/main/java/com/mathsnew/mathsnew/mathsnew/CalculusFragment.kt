@@ -1,5 +1,5 @@
 // app/src/main/java/com/mathsnew/mathsnew/CalculusFragment.kt
-// 修复版本 - 回到原始简单稳定的实现
+// 修复版本 - 集成 HandwrittenExporter
 
 package com.mathsnew.mathsnew
 
@@ -26,6 +26,7 @@ import kotlinx.coroutines.withContext
 import com.mathsnew.mathsnew.calculus.graph.GraphEngine
 import com.mathsnew.mathsnew.newsimplified.CalculusEngineV2
 import com.mathsnew.mathsnew.newsimplified.CalculationResult as CalculationResultV2
+import com.mathsnew.mathsnew.newsimplified.ExportHelper
 import com.mathsnew.mathsnew.utils.CalculationHistoryManager
 import androidx.appcompat.app.AlertDialog
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -72,6 +73,7 @@ class CalculusFragment : Fragment() {
     private var lastResult: CalculationResultV2? = null
 
     private lateinit var historyManager: CalculationHistoryManager
+    private lateinit var exportHelper: ExportHelper
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -86,6 +88,7 @@ class CalculusFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         historyManager = CalculationHistoryManager(requireContext())
+        exportHelper = ExportHelper(requireContext())
 
         setupDisplayEditText()
         setupBackButton()
@@ -228,65 +231,21 @@ class CalculusFragment : Fragment() {
     }
 
     private fun exportResults() {
-        if (currentExpression.isEmpty() && !hasResult) {
+        // 检查是否有结果
+        if (!hasResult || lastResult == null) {
             Toast.makeText(requireContext(), "没有可导出的内容", Toast.LENGTH_SHORT).show()
             return
         }
 
-        val output = buildExportText()
-
-        if (output.isEmpty()) {
+        // 检查是否是成功的结果
+        val result = lastResult
+        if (result !is CalculationResultV2.Success) {
             Toast.makeText(requireContext(), "没有可导出的内容", Toast.LENGTH_SHORT).show()
             return
         }
 
-        val clipboard = requireContext().getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-        val clip = android.content.ClipData.newPlainText("导数计算结果", output)
-        clipboard.setPrimaryClip(clip)
-
-        Toast.makeText(requireContext(), "✅ 已复制到剪贴板", Toast.LENGTH_SHORT).show()
-        Log.d(TAG, "✅ 已导出结果:\n$output")
-    }
-
-    private fun buildExportText(): String {
-        val builder = StringBuilder()
-
-        if (currentExpression.isNotEmpty()) {
-            builder.append("f(x) = $currentExpression\n")
-        }
-
-        if (hasResult && lastResult != null) {
-            when (val result = lastResult) {
-                is CalculationResultV2.Success -> {
-                    builder.append("\n")
-
-                    val firstForms = result.forms.getDisplayForms()
-                    builder.append("f'(x) = ")
-                    for ((index, form) in firstForms.withIndex()) {
-                        if (index > 0) {
-                            builder.append("\n      = ")
-                        }
-                        builder.append(form.expression.toString())
-                    }
-
-                    if (result.secondDerivativeForms != null) {
-                        builder.append("\n\n")
-                        val secondForms = result.secondDerivativeForms.getDisplayForms()
-                        builder.append("f''(x) = ")
-                        for ((index, form) in secondForms.withIndex()) {
-                            if (index > 0) {
-                                builder.append("\n       = ")
-                            }
-                            builder.append(form.expression.toString())
-                        }
-                    }
-                }
-                else -> {
-                }
-            }
-        }
-
-        return builder.toString()
+        // ✅ 使用新的 ExportHelper 导出手写格式
+        exportHelper.exportAndCopy(result, currentExpression)
     }
 
     private fun setupKeyboardListeners() {

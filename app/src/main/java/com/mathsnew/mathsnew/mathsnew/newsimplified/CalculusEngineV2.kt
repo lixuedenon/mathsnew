@@ -11,6 +11,7 @@ class CalculusEngineV2 {
     private val derivativeCalculator = DerivativeCalculator()
     private val canonicalizer = ExpressionCanonicalizer()
     private val unifiedEngine = UnifiedIterativeEngine()
+    private val formGenerator = FormGenerator()  // ✅ 新增：用于生成多种形式
     private val formatter = MathFormatter()
 
     companion object {
@@ -41,7 +42,8 @@ class CalculusEngineV2 {
             val canonicalDerivative = canonicalizer.canonicalize(deepCleaned)
             Log.d(TAG, "规范化完成: $canonicalDerivative")
 
-            val allForms = unifiedEngine.generateMultipleForms(canonicalDerivative)
+            // ✅ 修改：使用 FormGenerator 生成多种形式
+            val allForms = formGenerator.generateAllForms(canonicalDerivative)
             Log.d(TAG, "生成了 ${allForms.forms.size} 种形式")
 
             val bestForm = FormSelector.selectBestForDifferentiation(allForms.getDisplayForms())
@@ -57,7 +59,10 @@ class CalculusEngineV2 {
             Log.e(TAG, "深度规范化二阶导数完成: $deepCleanedSecond")
 
             val canonicalSecondDerivative = canonicalizer.canonicalize(deepCleanedSecond)
-            val secondDerivativeForms = unifiedEngine.generateMultipleForms(canonicalSecondDerivative)
+
+            // ✅ 修改：二阶导数也使用 FormGenerator
+            val secondDerivativeForms = formGenerator.generateAllForms(canonicalSecondDerivative)
+            Log.d(TAG, "二阶导数生成了 ${secondDerivativeForms.forms.size} 种形式")
 
             val endTime = System.currentTimeMillis()
             Log.d(TAG, "✅ 总耗时: ${endTime - startTime}ms")

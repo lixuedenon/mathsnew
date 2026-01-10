@@ -1,5 +1,5 @@
 // app/src/main/java/com/mathsnew/mathsnew/newsimplified/FractionSimplifier.kt
-// 分式化简器 - 处理分子分母约分
+// 分式化简器 - 处理分子分母约分（支持 FunctionKey）
 
 package com.mathsnew.mathsnew.newsimplified
 
@@ -121,8 +121,9 @@ class FractionSimplifier {
                 areEquivalent(a.right, b.right)
             }
             a is MathNode.Function && b is MathNode.Function -> {
-                a.name == b.name &&
-                areEquivalent(a.argument, b.argument)
+                val keyA = FunctionKey.from(a)
+                val keyB = FunctionKey.from(b)
+                keyA == keyB
             }
             else -> false
         }

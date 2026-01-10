@@ -1,20 +1,35 @@
-// app/src/main/java/com/mathsnew/mathsnew/newsimplified/TermKey.kt
-// 数学项的唯一标识生成器 - 修复嵌套加法规范化
-
 package com.mathsnew.mathsnew.newsimplified
 
 import com.mathsnew.mathsnew.*
 import android.util.Log
 import kotlin.math.abs
 
+/**
+ * 数学项的唯一标识生成器
+ *
+ * 用途：
+ * 1. 为 MathTerm 生成唯一标识字符串
+ * 2. 用于判断同类项
+ * 3. 支持 FunctionKey 的规范化
+ *
+ * 修改记录：
+ * - 2026-01-07: 支持 FunctionKey 而非字符串函数键
+ */
 object TermKey {
 
     private const val TAG = "TermKey"
     private const val EPSILON = 1e-10
 
+    /**
+     * 为 MathTerm 生成唯一标识
+     *
+     * @param term 数学项
+     * @return 唯一标识字符串
+     */
     fun generate(term: MathTerm): String {
         val parts = mutableListOf<String>()
 
+        // 添加变量部分
         if (term.variables.isNotEmpty()) {
             val varPart = term.variables.toSortedMap().entries.joinToString("*") { (varName, exponent) ->
                 formatVariable(varName, exponent)
@@ -22,13 +37,15 @@ object TermKey {
             parts.add(varPart)
         }
 
+        // 添加函数部分
         if (term.functions.isNotEmpty()) {
-            val funcPart = term.functions.entries.sortedBy { it.key }.joinToString("*") { (funcKey, exponent) ->
+            val funcPart = term.functions.entries.sortedBy { it.key.toCanonicalString() }.joinToString("*") { (funcKey, exponent) ->
                 formatFunction(funcKey, exponent)
             }
             parts.add(funcPart)
         }
 
+        // 添加嵌套表达式部分
         if (term.nestedExpressions.isNotEmpty()) {
             val nestedPart = term.nestedExpressions
                 .map { normalizedNodeToString(it) }
@@ -44,6 +61,13 @@ object TermKey {
         }
     }
 
+    /**
+     * 格式化变量
+     *
+     * @param varName 变量名
+     * @param exponent 指数
+     * @return 格式化字符串
+     */
     private fun formatVariable(varName: String, exponent: Double): String {
         return if (abs(exponent - 1.0) < EPSILON) {
             varName
@@ -52,14 +76,28 @@ object TermKey {
         }
     }
 
-    private fun formatFunction(funcKey: String, exponent: Double): String {
+    /**
+     * 格式化函数
+     *
+     * @param funcKey 函数键
+     * @param exponent 指数
+     * @return 格式化字符串
+     */
+    private fun formatFunction(funcKey: FunctionKey, exponent: Double): String {
+        val canonicalStr = funcKey.toCanonicalString()
         return if (abs(exponent - 1.0) < EPSILON) {
-            funcKey
+            canonicalStr
         } else {
-            "$funcKey^${formatExponent(exponent)}"
+            "$canonicalStr^${formatExponent(exponent)}"
         }
     }
 
+    /**
+     * 格式化指数
+     *
+     * @param exponent 指数
+     * @return 格式化字符串
+     */
     private fun formatExponent(exponent: Double): String {
         return if (abs(exponent - exponent.toLong().toDouble()) < EPSILON) {
             exponent.toLong().toString()
@@ -69,14 +107,16 @@ object TermKey {
     }
 
     /**
-     * 规范化节点为字符串（新增：处理加法中的同类项）
+     * 规范化节点为字符串（处理加法中的同类项）
+     *
+     * @param node AST 节点
+     * @return 规范化字符串
      */
     private fun normalizedNodeToString(node: MathNode): String {
         return when (node) {
             is MathNode.BinaryOp -> {
                 when (node.operator) {
                     Operator.ADD, Operator.SUBTRACT -> {
-                        // ✅ 关键修复：对加法表达式，先提取项，再合并同类项
                         normalizeAddition(node)
                     }
                     else -> simpleNodeToString(node)
@@ -88,18 +128,18 @@ object TermKey {
 
     /**
      * 规范化加法表达式（合并同类项）
+     *
+     * @param node 加法节点
+     * @return 规范化字符串
      */
     private fun normalizeAddition(node: MathNode): String {
         Log.d(TAG, "规范化加法: $node")
 
-        // 1. 拍平加法树
         val termNodes = flattenAddition(node)
         Log.d(TAG, "  拍平后: ${termNodes.size} 个节点")
 
-        // 2. 转换为简化的 Term 表示（不使用 MathTerm，避免循环依赖）
         val simplifiedTerms = termNodes.map { SimpleTerm.from(it) }
 
-        // 3. 按 baseKey 分组
         val groups = mutableMapOf<String, MutableList<SimpleTerm>>()
         for (term in simplifiedTerms) {
             val key = term.baseKey
@@ -111,7 +151,6 @@ object TermKey {
 
         Log.d(TAG, "  分组: ${groups.size} 组")
 
-        // 4. 合并各组
         val merged = mutableListOf<SimpleTerm>()
         for ((key, group) in groups) {
             val totalCoeff = group.sumOf { it.coefficient }
@@ -123,7 +162,6 @@ object TermKey {
             }
         }
 
-        // 5. 排序并生成字符串
         val sorted = merged.sortedBy { it.baseKey }
         val result = sorted.joinToString("+") { it.toString() }
 
@@ -197,6 +235,12 @@ object TermKey {
         }
     }
 
+    /**
+     * 简单节点转字符串
+     *
+     * @param node AST 节点
+     * @return 字符串
+     */
     private fun simpleNodeToString(node: MathNode): String {
         return when (node) {
             is MathNode.Number -> {
@@ -232,6 +276,12 @@ object TermKey {
         }
     }
 
+    /**
+     * 拍平加法树
+     *
+     * @param node AST 节点
+     * @return 项列表
+     */
     private fun flattenAddition(node: MathNode): List<MathNode> {
         return when (node) {
             is MathNode.BinaryOp -> {
@@ -247,6 +297,12 @@ object TermKey {
         }
     }
 
+    /**
+     * 拍平乘法树
+     *
+     * @param node AST 节点
+     * @return 因子列表
+     */
     private fun flattenMultiplication(node: MathNode): List<MathNode> {
         return when (node) {
             is MathNode.BinaryOp -> {
@@ -260,6 +316,12 @@ object TermKey {
         }
     }
 
+    /**
+     * 取负
+     *
+     * @param node AST 节点
+     * @return 取负后的节点
+     */
     private fun negate(node: MathNode): MathNode {
         return when (node) {
             is MathNode.Number -> MathNode.Number(-node.value)

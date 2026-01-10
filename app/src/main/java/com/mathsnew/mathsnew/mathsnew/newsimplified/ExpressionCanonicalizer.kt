@@ -3,6 +3,7 @@
 // 修改版：分子和分母都不完全展开，保留因式结构
 // ✅ 新增：分子中的加减法表达式会合并同类项
 // ✅ 方案2：预处理分子，展开嵌套除法以便提取公因子
+// ✅ 修复：支持 FunctionKey
 
 package com.mathsnew.mathsnew.newsimplified
 
@@ -33,15 +34,12 @@ class ExpressionCanonicalizer {
         if (node is MathNode.BinaryOp && node.operator == Operator.DIVIDE) {
             Log.d(TAG, "检测到分式，分别处理分子和分母")
 
-            // ✅ 方案2：预处理分子，展开嵌套除法
             val preprocessed = preprocessNumeratorForFactoring(node.left)
             Log.d(TAG, "分子预处理后: $preprocessed")
 
-            // 分子：只合并同类项，不展开幂运算
             val numerator = canonicalizeNonFraction(preprocessed)
             Log.d(TAG, "分子规范化完成: $numerator")
 
-            // 分母：只合并同类项，不展开幂运算（保留因式结构）
             val denominator = canonicalizeDenominatorOnly(node.right)
             Log.d(TAG, "分母规范化完成: $denominator")
 
@@ -77,35 +75,30 @@ class ExpressionCanonicalizer {
 
             is MathNode.BinaryOp -> {
                 when (node.operator) {
-                    // 递归处理加法和减法
                     Operator.ADD, Operator.SUBTRACT -> {
                         val left = preprocessNumeratorForFactoring(node.left)
                         val right = preprocessNumeratorForFactoring(node.right)
                         MathNode.BinaryOp(node.operator, left, right)
                     }
 
-                    // 递归处理乘法
                     Operator.MULTIPLY -> {
                         val left = preprocessNumeratorForFactoring(node.left)
                         val right = preprocessNumeratorForFactoring(node.right)
                         MathNode.BinaryOp(Operator.MULTIPLY, left, right)
                     }
 
-                    // ✅ 关键：展开除法 a/b → a×(1/b)
                     Operator.DIVIDE -> {
                         Log.d(TAG, "  发现嵌套除法: $node")
 
                         val numerator = preprocessNumeratorForFactoring(node.left)
-                        val denominator = node.right  // 分母保持原样
+                        val denominator = node.right
 
-                        // 创建 1/denominator
                         val reciprocal = MathNode.BinaryOp(
                             Operator.DIVIDE,
                             MathNode.Number(1),
                             denominator
                         )
 
-                        // 转换为 numerator × (1/denominator)
                         val result = MathNode.BinaryOp(
                             Operator.MULTIPLY,
                             numerator,
@@ -116,7 +109,6 @@ class ExpressionCanonicalizer {
                         result
                     }
 
-                    // 幂运算保持不变
                     Operator.POWER -> {
                         val base = preprocessNumeratorForFactoring(node.left)
                         val exponent = preprocessNumeratorForFactoring(node.right)
@@ -166,18 +158,15 @@ class ExpressionCanonicalizer {
             }
 
             is MathNode.Function -> {
-                // 函数参数递归化简
                 MathNode.Function(node.name, canonicalizeDenominatorOnly(node.argument))
             }
 
             is MathNode.BinaryOp -> {
                 when (node.operator) {
-                    // 加法和减法：尝试合并同类项
                     Operator.ADD, Operator.SUBTRACT -> {
                         val left = canonicalizeDenominatorOnly(node.left)
                         val right = canonicalizeDenominatorOnly(node.right)
 
-                        // 尝试提取并合并同类项
                         val terms = extractTermsWithoutExpanding(
                             MathNode.BinaryOp(node.operator, left, right)
                         )
@@ -191,21 +180,18 @@ class ExpressionCanonicalizer {
                         }
                     }
 
-                    // 乘法：递归化简每个因子
                     Operator.MULTIPLY -> {
                         val left = canonicalizeDenominatorOnly(node.left)
                         val right = canonicalizeDenominatorOnly(node.right)
                         MathNode.BinaryOp(Operator.MULTIPLY, left, right)
                     }
 
-                    // ⚠️ 关键：幂运算保持原样，不展开
                     Operator.POWER -> {
                         val base = canonicalizeDenominatorOnly(node.left)
                         val exponent = canonicalizeDenominatorOnly(node.right)
                         MathNode.BinaryOp(Operator.POWER, base, exponent)
                     }
 
-                    // 除法：递归处理
                     Operator.DIVIDE -> {
                         val left = canonicalizeDenominatorOnly(node.left)
                         val right = canonicalizeDenominatorOnly(node.right)
@@ -259,23 +245,19 @@ class ExpressionCanonicalizer {
                         val left = fullyExpand(node.left)
                         val right = fullyExpand(node.right)
 
-                        // ✅ 关键修改：如果分子是加减法表达式，尝试合并同类项
                         if (left is MathNode.BinaryOp &&
                             (left.operator == Operator.ADD || left.operator == Operator.SUBTRACT)) {
 
                             Log.d(TAG, "⚠️ 检测到分子是加减法表达式，尝试合并同类项")
 
                             try {
-                                // 提取分子中的所有项
                                 val terms = extractTerms(left)
                                 Log.d(TAG, "  分子提取了 ${terms.size} 个项")
 
-                                // 合并同类项
                                 val merged = mergeTerms(terms)
                                 Log.d(TAG, "  分子合并后剩 ${merged.size} 个项")
 
                                 if (merged.size < terms.size) {
-                                    // 重建分子
                                     val sorted = sortTerms(merged)
                                     val simplifiedNumerator = buildExpression(sorted)
 
@@ -307,7 +289,6 @@ class ExpressionCanonicalizer {
      * 简化幂运算
      */
     private fun simplifyPower(base: MathNode, exponent: MathNode): MathNode {
-        // 处理嵌套幂：(a^b)^c → a^(b×c)
         if (base is MathNode.BinaryOp && base.operator == Operator.POWER
             && base.right is MathNode.Number && exponent is MathNode.Number) {
             val innerExponent = base.right.value
@@ -372,6 +353,7 @@ class ExpressionCanonicalizer {
 
     /**
      * 乘两个简单项
+     * ✅ 修复：使用 MathTerm 处理，自动支持 FunctionKey
      */
     private fun multiplySimpleTerms(left: MathNode, right: MathNode): MathNode {
         if (left is MathNode.Number && right is MathNode.Number) {
@@ -406,7 +388,7 @@ class ExpressionCanonicalizer {
                 newVariables[varName] = (newVariables[varName] ?: 0.0) + exponent
             }
 
-            val newFunctions = mutableMapOf<String, Double>()
+            val newFunctions = mutableMapOf<FunctionKey, Double>()
             for ((funcKey, exponent) in leftTerm.functions) {
                 newFunctions[funcKey] = exponent
             }
@@ -443,7 +425,6 @@ class ExpressionCanonicalizer {
             return MathNode.Number(Math.pow(base.value, n))
         }
 
-        // 只展开小的整数幂
         if (n != n.toInt().toDouble() || n < 0 || n > 10) {
             return MathNode.BinaryOp(Operator.POWER, base, exponent)
         }
