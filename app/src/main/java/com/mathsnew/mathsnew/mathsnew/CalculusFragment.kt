@@ -1,9 +1,13 @@
 // app/src/main/java/com/mathsnew/mathsnew/CalculusFragment.kt
-// 修复版本 - 集成 HandwrittenExporter
+// 微积分计算器Fragment - 集成粘贴功能
+// ✅ 彻底修复：导出格式优化（表达式之间真正加两个空行）
 
 package com.mathsnew.mathsnew
 
 import android.animation.ValueAnimator
+import android.content.ClipboardManager
+import android.content.ClipDescription
+import android.content.Context
 import android.graphics.Color
 import android.os.Bundle
 import android.text.SpannableString
@@ -72,8 +76,14 @@ class CalculusFragment : Fragment() {
 
     private var lastResult: CalculationResultV2? = null
 
+    // ✅ 新增：保存导出用的纯文本版本
+    private var exportableText = ""
+
     private lateinit var historyManager: CalculationHistoryManager
     private lateinit var exportHelper: ExportHelper
+
+    private lateinit var clipboardManager: ClipboardManager
+    private var clipboardListener: ClipboardManager.OnPrimaryClipChangedListener? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -95,33 +105,24 @@ class CalculusFragment : Fragment() {
         setupClearButton()
         setupExportButton()
         setupHistoryButton()
+        setupClipboardListener()
+        setupPasteButton()
         setupKeyboardListeners()
         setupFunctionButtons()
     }
 
-    /**
-     * ✅ 配置输入和显示控件
-     * etInput: 输入阶段（有光标）
-     * tvDisplay: 结果阶段（无光标，多行）
-     */
     private fun setupDisplayEditText() {
-        // ✅ 配置 EditText（输入阶段）
         binding.etInput.apply {
-            showSoftInputOnFocus = false  // 禁用系统键盘
+            showSoftInputOnFocus = false
             setHorizontallyScrolling(true)
             isHorizontalScrollBarEnabled = true
         }
 
-        // ✅ 配置 TextView（结果阶段）
         binding.tvDisplay.apply {
             setHorizontallyScrolling(true)
             isHorizontalScrollBarEnabled = true
             movementMethod = android.text.method.ScrollingMovementMethod.getInstance()
-
-            // 🔥 关键修复：强制不自动换行
-            // 即使有自定义 Span，也不要在行内换行
-            setSingleLine(false)  // 允许多个逻辑行（通过 \n 分隔）
-            // 但每个逻辑行内部不自动换行（由 setHorizontallyScrolling 控制）
+            setSingleLine(false)
         }
     }
 
@@ -147,6 +148,223 @@ class CalculusFragment : Fragment() {
         binding.btnHistory?.setOnClickListener {
             showHistoryDialog()
         }
+    }
+
+    private fun setupClipboardListener() {
+        clipboardManager = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+
+        clipboardListener = ClipboardManager.OnPrimaryClipChangedListener {
+            updatePasteButtonState()
+        }
+
+        clipboardManager.addPrimaryClipChangedListener(clipboardListener!!)
+
+        updatePasteButtonState()
+    }
+
+    private fun updatePasteButtonState() {
+        val hasText = clipboardManager.hasPrimaryClip() &&
+                      clipboardManager.primaryClipDescription?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true
+
+        binding.btnPasteToolbar?.apply {
+            isEnabled = hasText
+            alpha = if (hasText) 1.0f else 0.3f
+
+            imageTintList = if (hasText) {
+                android.content.res.ColorStateList.valueOf(
+                    Color.parseColor("#4CAF50")
+                )
+            } else {
+                android.content.res.ColorStateList.valueOf(
+                    Color.WHITE
+                )
+            }
+        }
+    }
+
+    private fun setupPasteButton() {
+        binding.btnPasteToolbar?.setOnClickListener {
+            handlePaste()
+        }
+    }
+
+    private fun handlePaste() {
+        Log.d(TAG, "📋 handlePaste() 被调用")
+
+        val clipData = clipboardManager.primaryClip
+        if (clipData == null || clipData.itemCount == 0) {
+            Toast.makeText(requireContext(), "剪贴板为空", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val pastedText = clipData.getItemAt(0).text?.toString() ?: ""
+        Log.d(TAG, "  原始剪贴板内容: '$pastedText'")
+
+        if (pastedText.isEmpty()) {
+            Toast.makeText(requireContext(), "剪贴板内容为空", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val cleanedText = cleanPastedExpression(pastedText)
+        Log.d(TAG, "  清理后的内容: '$cleanedText'")
+
+        if (currentExpression.isNotEmpty()) {
+            showPasteConfirmDialog(cleanedText)
+        } else {
+            applyPastedText(cleanedText)
+        }
+    }
+
+    private fun cleanPastedExpression(text: String): String {
+        var cleaned = text.trim()
+
+        Log.d(TAG, "清理表达式开始: '$cleaned'")
+
+        cleaned = cleaned.replace("\\s+".toRegex(), "")
+        Log.d(TAG, "  移除空格: '$cleaned'")
+
+        cleaned = cleaned.replace("²", "^2")
+        cleaned = cleaned.replace("³", "^3")
+        cleaned = cleaned.replace("⁴", "^4")
+        cleaned = cleaned.replace("⁵", "^5")
+        cleaned = cleaned.replace("⁶", "^6")
+        cleaned = cleaned.replace("⁷", "^7")
+        cleaned = cleaned.replace("⁸", "^8")
+        cleaned = cleaned.replace("⁹", "^9")
+        cleaned = cleaned.replace("⁰", "^0")
+        cleaned = cleaned.replace("¹", "^1")
+        Log.d(TAG, "  转换上标: '$cleaned'")
+
+        cleaned = cleaned.replace("·", "×")
+        cleaned = cleaned.replace("*", "×")
+        cleaned = cleaned.replace("÷", "/")
+        Log.d(TAG, "  符号替换: '$cleaned'")
+
+        Log.d(TAG, "清理表达式完成: '$cleaned'")
+        return cleaned
+    }
+
+    private fun validateMathExpression(expr: String): ValidationResult {
+        if (expr.isEmpty()) {
+            return ValidationResult(false, "表达式为空")
+        }
+
+        val containsLettersPattern = Regex("[a-z]+")
+        val letters = containsLettersPattern.findAll(expr)
+            .map { it.value }
+            .toSet()
+
+        val validFunctions = setOf(
+            "sin", "cos", "tan", "cot", "sec", "csc",
+            "arcsin", "arccos", "arctan", "arccot", "arcsec", "arccsc",
+            "ln", "log", "sqrt", "exp", "abs", "x", "e"
+        )
+
+        val invalidFunctions = letters.filter { it !in validFunctions }
+        if (invalidFunctions.isNotEmpty()) {
+            return ValidationResult(false, "包含不支持的函数或变量: ${invalidFunctions.joinToString(", ")}")
+        }
+
+        val basicPattern = Regex("^[0-9x+\\-×/()^.πesincostaqlgxprbqrtabs]+$")
+        if (!basicPattern.matches(expr)) {
+            return ValidationResult(false, "包含无效字符，仅支持数学表达式")
+        }
+
+        var openParens = 0
+        for (char in expr) {
+            when (char) {
+                '(' -> openParens++
+                ')' -> openParens--
+            }
+            if (openParens < 0) {
+                return ValidationResult(false, "括号不匹配：右括号过多")
+            }
+        }
+        if (openParens != 0) {
+            return ValidationResult(false, "括号不匹配：缺少${if (openParens > 0) "右" else "左"}括号")
+        }
+
+        val consecutiveOpsPattern = Regex("[+\\-×/]{2,}")
+        if (consecutiveOpsPattern.containsMatchIn(expr)) {
+            return ValidationResult(false, "存在连续的运算符")
+        }
+
+        if (expr.matches(Regex("^[+\\-×/].*")) && !expr.matches(Regex("^-[0-9x(].*"))) {
+            return ValidationResult(false, "表达式不能以运算符开头")
+        }
+
+        if (expr.matches(Regex(".*[+\\-×/^]$"))) {
+            return ValidationResult(false, "表达式不能以运算符结尾")
+        }
+
+        val emptyParensPattern = Regex("\\(\\)")
+        if (emptyParensPattern.containsMatchIn(expr)) {
+            return ValidationResult(false, "存在空括号")
+        }
+
+        val onlyNumbers = Regex("^[0-9.]+$")
+        val onlyOperators = Regex("^[+\\-×/^()]+$")
+        if (onlyNumbers.matches(expr) || onlyOperators.matches(expr)) {
+            return ValidationResult(false, "表达式不完整")
+        }
+
+        return ValidationResult(true, "")
+    }
+
+    private data class ValidationResult(
+        val isValid: Boolean,
+        val errorMessage: String
+    )
+
+    private fun showPasteConfirmDialog(cleanedText: String) {
+        AlertDialog.Builder(requireContext())
+            .setTitle("粘贴表达式")
+            .setMessage("当前输入将被替换为：\n\n$cleanedText\n\n确认吗？")
+            .setPositiveButton("确认") { _, _ ->
+                applyPastedText(cleanedText)
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun applyPastedText(text: String) {
+        Log.d(TAG, "✅ 开始验证粘贴的文本: '$text'")
+
+        val validationResult = validateMathExpression(text)
+
+        if (!validationResult.isValid) {
+            Log.e(TAG, "  ❌ 验证失败: ${validationResult.errorMessage}")
+            AlertDialog.Builder(requireContext())
+                .setTitle("无效的数学表达式")
+                .setMessage("${validationResult.errorMessage}\n\n请确保粘贴的是有效的数学表达式。")
+                .setPositiveButton("确定", null)
+                .show()
+            return
+        }
+
+        try {
+            val parser = ExpressionParser()
+            parser.parse(text)
+            Log.d(TAG, "  ✅ 解析器验证通过")
+        } catch (e: Exception) {
+            Log.e(TAG, "  ❌ 解析器验证失败: ${e.message}")
+            AlertDialog.Builder(requireContext())
+                .setTitle("无法解析表达式")
+                .setMessage("表达式格式错误：\n${e.message}\n\n请检查表达式是否正确。")
+                .setPositiveButton("确定", null)
+                .show()
+            return
+        }
+
+        if (hasResult) {
+            clearResults()
+        }
+
+        currentExpression = text
+        updateDisplay()
+
+        Toast.makeText(requireContext(), "已粘贴", Toast.LENGTH_SHORT).show()
+        Log.d(TAG, "  ✅ 粘贴成功")
     }
 
     private fun showHistoryDialog() {
@@ -186,6 +404,7 @@ class CalculusFragment : Fragment() {
 
         hasResult = false
         lastResult = null
+        exportableText = ""
         stopBlinkAnimation()
 
         binding.graphView.clearGraph()
@@ -196,7 +415,6 @@ class CalculusFragment : Fragment() {
 
         enableDerivativeButton()
 
-        // ✅ 切换显示：显示输入控件，隐藏结果控件
         binding.etInput.visibility = View.VISIBLE
         binding.tvDisplay.visibility = View.GONE
 
@@ -209,21 +427,19 @@ class CalculusFragment : Fragment() {
         currentExpression = ""
         hasResult = false
         lastResult = null
+        exportableText = ""
 
         stopBlinkAnimation()
 
         updateDisplay()
         enableDerivativeButton()
 
-
         binding.graphView.clearGraph()
         binding.graphView.visibility = View.GONE
 
-        // ✅ 清空两个控件
         binding.etInput.setText("")
         binding.tvDisplay.setText("")
 
-        // ✅ 切换显示：显示输入控件，隐藏结果控件
         binding.etInput.visibility = View.VISIBLE
         binding.tvDisplay.visibility = View.GONE
 
@@ -231,21 +447,18 @@ class CalculusFragment : Fragment() {
     }
 
     private fun exportResults() {
-        // 检查是否有结果
-        if (!hasResult || lastResult == null) {
+        if (!hasResult) {
             Toast.makeText(requireContext(), "没有可导出的内容", Toast.LENGTH_SHORT).show()
             return
         }
 
-        // 检查是否是成功的结果
-        val result = lastResult
-        if (result !is CalculationResultV2.Success) {
-            Toast.makeText(requireContext(), "没有可导出的内容", Toast.LENGTH_SHORT).show()
+        if (exportableText.isEmpty()) {
+            Toast.makeText(requireContext(), "导出内容为空", Toast.LENGTH_SHORT).show()
             return
         }
 
-        // ✅ 使用新的 ExportHelper 导出手写格式
-        exportHelper.exportAndCopy(result, currentExpression)
+        // ✅ 使用保存的导出文本
+        exportHelper.exportAndCopy(exportableText)
     }
 
     private fun setupKeyboardListeners() {
@@ -297,10 +510,6 @@ class CalculusFragment : Fragment() {
         binding.btnDerivative.setOnClickListener { calculateDerivative() }
     }
 
-    /**
-     * ✅ 处理幂次输入 x^n
-     * 简单版本：直接追加到末尾
-     */
     private fun handlePowerInput() {
         Log.d(TAG, "^️ handlePowerInput(): hasResult=$hasResult")
 
@@ -315,13 +524,6 @@ class CalculusFragment : Fragment() {
         Log.d(TAG, "  → 完成: expr='$currentExpression'")
     }
 
-    /**
-     * ✅ 追加表达式（原始简单版本）
-     * 逻辑：
-     * 1. 所有输入都追加到末尾
-     * 2. 如果表达式以 ^n 结尾且输入是数字，替换 n
-     * 3. 否则直接追加
-     */
     private fun appendToExpression(value: String) {
         Log.d(TAG, "📝 appendToExpression('$value'): hasResult=$hasResult, expr='$currentExpression'")
 
@@ -332,13 +534,10 @@ class CalculusFragment : Fragment() {
 
         stopBlinkAnimation()
 
-        // ✅ 检查是否以 ^n 结尾，且输入的是数字
         if (currentExpression.endsWith("^n") && value.length == 1 && value[0].isDigit()) {
-            // 替换 n 为输入的数字
             currentExpression = currentExpression.dropLast(1) + value
             Log.d(TAG, "  → 替换 ^n 为 ^$value: expr='$currentExpression'")
         } else {
-            // 直接追加到末尾
             currentExpression += value
             Log.d(TAG, "  → 追加到末尾: expr='$currentExpression'")
         }
@@ -354,59 +553,49 @@ class CalculusFragment : Fragment() {
         currentExpression = ""
         hasResult = false
         lastResult = null
+        exportableText = ""
 
         stopBlinkAnimation()
         updateDisplay()
         enableDerivativeButton()
 
-
         binding.graphView.clearGraph()
         binding.graphView.visibility = View.GONE
 
-        // ✅ 清空两个控件
         binding.etInput.setText("")
         binding.tvDisplay.setText("")
 
-        // ✅ 切换显示：显示输入控件，隐藏结果控件
         binding.etInput.visibility = View.VISIBLE
         binding.tvDisplay.visibility = View.GONE
 
         Log.d(TAG, "✅ clearExpression() 完成")
     }
 
-    /**
-     * ✅ 清除结果和图形（开始新输入时调用）
-     */
     private fun clearResults() {
         Log.d(TAG, "🔄 clearResults() 开始")
 
         currentExpression = ""
         hasResult = false
         lastResult = null
+        exportableText = ""
 
         stopBlinkAnimation()
 
         updateDisplay()
         enableDerivativeButton()
 
-
         binding.graphView.clearGraph()
         binding.graphView.visibility = View.GONE
 
-        // ✅ 清空两个控件
         binding.etInput.setText("")
         binding.tvDisplay.setText("")
 
-        // ✅ 切换显示：显示输入控件，隐藏结果控件
         binding.etInput.visibility = View.VISIBLE
         binding.tvDisplay.visibility = View.GONE
 
         Log.d(TAG, "✅ clearResults() 完成: hasResult=$hasResult, expr='$currentExpression'")
     }
 
-    /**
-     * ✅ 退格删除（原始简单版本）
-     */
     private fun backspace() {
         Log.d(TAG, "⌫ backspace(): hasResult=$hasResult, expr='$currentExpression'")
 
@@ -420,7 +609,6 @@ class CalculusFragment : Fragment() {
             return
         }
 
-        // ✅ 如果以 ^n 结尾，删除两个字符
         if (currentExpression.endsWith("^n")) {
             currentExpression = currentExpression.dropLast(2)
             stopBlinkAnimation()
@@ -435,7 +623,7 @@ class CalculusFragment : Fragment() {
 
     private fun updateDisplay() {
         val formattedText = formatExpressionWithHighlight(currentExpression, false)
-        binding.etInput.setText(formattedText)  // ← 改成 etInput
+        binding.etInput.setText(formattedText)
     }
 
     private fun updateDisplayWithBlink() {
@@ -457,7 +645,7 @@ class CalculusFragment : Fragment() {
                     true,
                     alpha
                 )
-                binding.etInput.setText(formattedText)  // ← 改成 etInput
+                binding.etInput.setText(formattedText)
             }
 
             start()
@@ -645,7 +833,6 @@ class CalculusFragment : Fragment() {
                     hasResult = true
                     disableDerivativeButton()
 
-
                     Log.d(TAG, "🚀 开始异步生成图形...")
                     lifecycleScope.launch {
                         val graphStartTime = System.currentTimeMillis()
@@ -694,7 +881,6 @@ class CalculusFragment : Fragment() {
                     hasResult = true
                     disableDerivativeButton()
 
-
                     lifecycleScope.launch {
                         try {
                             val graphData = withContext(Dispatchers.Default) {
@@ -720,10 +906,8 @@ class CalculusFragment : Fragment() {
     private fun appendResultToDisplay(result: CalculationResult.Success) {
         val builder = SpannableStringBuilder()
 
-        // ✅ 从 etInput 读取当前输入的表达式
         builder.append(binding.etInput.text)
 
-        // ✅ 添加 f(x) = 行
         builder.append("\n\nf(x) = ")
         builder.append(currentExpression)
         builder.append("\n\n")
@@ -736,101 +920,105 @@ class CalculusFragment : Fragment() {
             builder.append(result.secondDerivativeDisplayText)
         }
 
-        // ✅ 显示到 tvDisplay
         binding.tvDisplay.setText(builder)
 
-        // ✅ 切换显示：隐藏输入控件，显示结果控件
         binding.etInput.visibility = View.GONE
         binding.tvDisplay.visibility = View.VISIBLE
     }
 
     private fun appendMultiFormResultToDisplay(result: CalculationResultV2.Success) {
-        val builder = SpannableStringBuilder()
+        val displayBuilder = SpannableStringBuilder()
+        val exportBuilder = StringBuilder()
 
-        // ✅ 从 etInput 读取当前输入的表达式
-        builder.append(binding.etInput.text)
+        // ✅ 第一行：原始输入表达式
+        displayBuilder.append(binding.etInput.text)
+        exportBuilder.append(currentExpression)
+        exportBuilder.append("\n\n\n")  // ✅ 空两行
 
-        builder.append("\n\nf(x) = ")
-        builder.append(currentExpression)
+        // ✅ f(x) = ...
+        displayBuilder.append("\n\nf(x) = ")
+        displayBuilder.append(currentExpression)
+        exportBuilder.append("f(x) = ")
+        exportBuilder.append(currentExpression)
+        exportBuilder.append("\n\n\n")  // ✅ 空两行
 
         val displayForms = result.forms.getDisplayForms()
 
-        builder.append("\n\n")
-        builder.append("f'(x) = ")
+        // ✅ f'(x) = ...
+        displayBuilder.append("\n\n")
+        displayBuilder.append("f'(x) = ")
+        exportBuilder.append("f'(x) = ")
 
         for ((index, form) in displayForms.withIndex()) {
             if (index > 0) {
-                builder.append("\n\n      = ")
+                displayBuilder.append("\n\n      = ")
+                exportBuilder.append("\n\n      = ")  // ✅ 同一表达式不同形式：一个空行
             }
 
             val formatted = formatter.format(form.expression.toString())
 
-            // 🔍 DEBUG: 查看格式化后的文本
             Log.d(TAG, "🔍 f'(x) form[$index]:")
             Log.d(TAG, "  原始表达式: ${form.expression}")
             Log.d(TAG, "  格式化plainText: ${formatted.plainText}")
             Log.d(TAG, "  格式化displayText: ${formatted.displayText}")
-            Log.d(TAG, "  displayText长度: ${formatted.displayText.length}")
+            Log.d(TAG, "  导出文本: ${formatted.exportText}")
 
-            builder.append(formatted.displayText)
+            displayBuilder.append(formatted.displayText)
+            exportBuilder.append(formatted.exportText)
         }
 
+        // ✅ f''(x) = ...
         if (result.secondDerivativeForms != null) {
             val secondDisplayForms = result.secondDerivativeForms.getDisplayForms()
 
-            builder.append("\n\n")
+            displayBuilder.append("\n\n")
+            exportBuilder.append("\n\n\n\n")  // ✅ 空两行
 
             for ((index, form) in secondDisplayForms.withIndex()) {
                 val formatted = formatter.format(form.expression.toString())
 
                 if (index == 0) {
-                    builder.append("f''(x) = ")
+                    displayBuilder.append("f''(x) = ")
+                    exportBuilder.append("f''(x) = ")
 
-                    // 🔍 DEBUG: 查看二阶导数
                     Log.d(TAG, "🔍 f''(x) form[$index]:")
                     Log.d(TAG, "  原始表达式: ${form.expression}")
                     Log.d(TAG, "  格式化plainText: ${formatted.plainText}")
                     Log.d(TAG, "  格式化displayText: ${formatted.displayText}")
+                    Log.d(TAG, "  导出文本: ${formatted.exportText}")
                 } else {
-                    builder.append("\n\n       = ")
+                    displayBuilder.append("\n\n       = ")
+                    exportBuilder.append("\n\n       = ")  // ✅ 同一表达式不同形式：一个空行
                 }
 
-                builder.append(formatted.displayText)
+                displayBuilder.append(formatted.displayText)
+                exportBuilder.append(formatted.exportText)
             }
         } else if (result.secondDerivativeDisplayText != null) {
-            builder.append("\n\n")
-            builder.append("f''(x) = ")
-            builder.append(result.secondDerivativeDisplayText)
+            displayBuilder.append("\n\n")
+            displayBuilder.append("f''(x) = ")
+            displayBuilder.append(result.secondDerivativeDisplayText)
+            exportBuilder.append("\n\n\n\nf''(x) = ")
+            exportBuilder.append(result.secondDerivativeDisplayText.toString())
         }
 
-        // 🔍 DEBUG: 查看最终构建的完整文本
+        // ✅ 保存导出文本
+        exportableText = exportBuilder.toString()
+
         Log.d(TAG, "🔍 最终构建的文本:")
-        Log.d(TAG, "  总长度: ${builder.length}")
-        Log.d(TAG, "  文本内容:\n$builder")
-        Log.d(TAG, "  plainText:\n${builder.toString()}")
+        Log.d(TAG, "  显示总长度: ${displayBuilder.length}")
+        Log.d(TAG, "  导出总长度: ${exportableText.length}")
+        Log.d(TAG, "  导出文本:\n$exportableText")
 
-        // 🔍 DEBUG: 检查是否有换行符
-        val text = builder.toString()
-        val lines = text.split("\n")
-        Log.d(TAG, "🔍 文本行数: ${lines.size}")
-        lines.forEachIndexed { index, line ->
-            Log.d(TAG, "  第${index+1}行 (${line.length}字符): $line")
-        }
+        binding.tvDisplay.setText(displayBuilder)
 
-        // ✅ 显示到 tvDisplay
-        binding.tvDisplay.setText(builder)
-
-        // 🔥 关键修复：强制设置 TextView 的布局行为
         binding.tvDisplay.post {
             binding.tvDisplay.apply {
-                // 确保横向滚动生效
                 setHorizontallyScrolling(true)
-                // 强制重新布局
                 requestLayout()
             }
         }
 
-        // ✅ 切换显示：隐藏输入控件，显示结果控件
         binding.etInput.visibility = View.GONE
         binding.tvDisplay.visibility = View.VISIBLE
     }
@@ -847,6 +1035,11 @@ class CalculusFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+
+        clipboardListener?.let {
+            clipboardManager.removePrimaryClipChangedListener(it)
+        }
+
         stopBlinkAnimation()
         _binding = null
     }

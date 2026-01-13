@@ -1,5 +1,5 @@
 // app/src/main/java/com/mathsnew/mathsnew/newsimplified/ExportHelper.kt
-// 导出助手 - 集成 HandwrittenExporter 到现有系统
+// 导出助手 - 简化版，直接导出显示文本
 
 package com.mathsnew.mathsnew.newsimplified
 
@@ -7,59 +7,44 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import android.util.Log
 
 /**
- * 导出助手
+ * 导出助手（简化版）
  *
  * 功能：
- * 1. 将计算结果导出为手写格式
- * 2. 复制到剪贴板
- * 3. 显示提示信息
+ * 1. 将屏幕显示的文本复制到剪贴板
+ * 2. 显示提示信息
  */
 class ExportHelper(private val context: Context) {
 
-    private val exporter = HandwrittenExporter()
     private val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+
+    companion object {
+        private const val TAG = "ExportHelper"
+    }
 
     /**
      * 导出并复制到剪贴板
      *
-     * @param result 计算结果
-     * @param originalExpression 原始表达式
+     * @param displayText 屏幕显示的文本
      */
-    fun exportAndCopy(result: CalculationResult.Success, originalExpression: String) {
+    fun exportAndCopy(displayText: String) {
         try {
-            // 生成手写格式文本（直接从 AST）
-            val handwrittenText = exporter.exportCalculationResult(
-                original = originalExpression,
-                firstDerivativeForms = result.forms,
-                secondDerivativeForms = result.secondDerivativeForms
-            )
+            Log.d(TAG, "开始导出，文本长度: ${displayText.length}")
 
             // 复制到剪贴板
-            val clip = ClipData.newPlainText("导数计算结果", handwrittenText)
+            val clip = ClipData.newPlainText("导数计算结果", displayText)
             clipboardManager.setPrimaryClip(clip)
 
-            // 显示提示
             Toast.makeText(context, "已复制到剪贴板", Toast.LENGTH_SHORT).show()
 
-            // 可选：打印到日志（方便调试）
-            android.util.Log.d("ExportHelper", "导出内容:\n$handwrittenText")
+            // 打印到日志（方便调试）
+            Log.d(TAG, "导出内容:\n$displayText")
 
         } catch (e: Exception) {
-            android.util.Log.e("ExportHelper", "导出失败", e)
+            Log.e(TAG, "导出失败", e)
             Toast.makeText(context, "导出失败: ${e.message}", Toast.LENGTH_SHORT).show()
         }
-    }
-
-    /**
-     * 仅生成文本，不复制
-     */
-    fun exportToText(result: CalculationResult.Success, originalExpression: String): String {
-        return exporter.exportCalculationResult(
-            original = originalExpression,
-            firstDerivativeForms = result.forms,
-            secondDerivativeForms = result.secondDerivativeForms
-        )
     }
 }

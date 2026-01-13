@@ -1,5 +1,6 @@
 // app/src/main/java/com/mathsnew/mathsnew/MathFormatter.kt
 // 数学表达式格式化器（完整版 - 支持 sin²(x) 格式和分数线显示）
+// ✅ 终极修复：每个分数独立计算前缀，等号和分数线正确对齐
 
 package com.mathsnew.mathsnew
 
@@ -12,6 +13,7 @@ import android.text.style.RelativeSizeSpan
 import android.text.style.SuperscriptSpan
 import android.util.Log
 import kotlin.math.abs
+import kotlin.math.max
 
 private enum class FormatterCharType {
     NUMBER, VARIABLE, OPERATOR, FUNCTION, PAREN
@@ -64,6 +66,10 @@ class MathFormatter {
         text = optimizeNegativeOne(text)
         Log.d("MathFormatter", "负号优化后: $text")
 
+        // 5.5. 修复 +-1× 和 +- 模式
+        text = fixPlusMinusPattern(text)
+        Log.d("MathFormatter", "修复+-模式后: $text")
+
         // 6. 系数和变量合并前置
         text = groupCoefficientsAndVariables(text)
         Log.d("MathFormatter", "系数前置后: $text")
@@ -90,9 +96,12 @@ class MathFormatter {
         // ✅ 10. 检测长度，自动缩放字体（>50字符缩小到70%）
         val finalSpannable = applyAutoScaling(spannableResult, text)
 
+        // ✅ 11. 生成导出用的纯文本版本
+        val exportText = createExportText(text, fractions)
+
         val plainText = text
 
-        return FormattedResult(plainText, finalSpannable)
+        return FormattedResult(plainText, finalSpannable, exportText)
     }
 
     /**
@@ -490,6 +499,34 @@ class MathFormatter {
     }
 
     /**
+     * 修复 +- 模式
+     *
+     * 处理以下情况：
+     * - +-1× → -
+     * - +-1· → -
+     * - +-数字 → -数字
+     * - +- → -
+     */
+    private fun fixPlusMinusPattern(text: String): String {
+        var result = text
+
+        // 1. +-1· → -（最优先，因为 -1 系数需要被消除）
+        result = result.replace("+-1·", "-")
+        result = result.replace("+-1×", "-")
+
+        // 2. +-数字· → -数字·
+        result = result.replace(Regex("""\+-(\d+)[·×]"""), "-$1·")
+
+        // 3. +-数字 → -数字（数字后没有乘号的情况）
+        result = result.replace(Regex("""\+-(\d+)(?![·×])"""), "-$1")
+
+        // 4. +- → -（兜底，处理其他所有 +- 情况）
+        result = result.replace("+-", "-")
+
+        return result
+    }
+
+    /**
      * 系数和变量合并前置
      */
     private fun groupCoefficientsAndVariables(text: String): String {
@@ -786,9 +823,9 @@ class MathFormatter {
         }
 
         return when {
-            trimmed.matches(Regex("""-?\\d+(\\.\\d+)?""")) -> FactorType.COEFFICIENT
-            trimmed.matches(Regex("""[a-z](\\^-?\\d+)?""")) -> FactorType.VARIABLE
-            trimmed.matches(Regex("""-?\\d+(\\.\\d+)?×?[a-z](\\^-?\\d+)?""")) -> FactorType.COEFFICIENT
+            trimmed.matches(Regex("""-?\d+(\.\d+)?""")) -> FactorType.COEFFICIENT
+            trimmed.matches(Regex("""[a-z](\^-?\d+)?""")) -> FactorType.VARIABLE
+            trimmed.matches(Regex("""-?\d+(\.\d+)?×?[a-z](\^-?\d+)?""")) -> FactorType.COEFFICIENT
             trimmed.startsWith("(") && trimmed.endsWith(")") -> FactorType.PARENTHESIZED
             else -> FactorType.FUNCTION
         }
@@ -1164,6 +1201,75 @@ class MathFormatter {
 
         return spannable
     }
+
+    /**
+     * ✅ 生成用于导出的纯文本版本（带分数线）
+     * ✅ 终极修复：每个分数独立计算前缀，等号和分数线正确对齐
+     *
+     * 将分数渲染为多行文本格式：
+     *          分子（居中）
+     * f'(x) = ────────────
+     *          分母（居中）
+     */
+    private fun createExportText(text: String, fractions: List<FractionInfo>): String {
+        if (fractions.isEmpty()) {
+            return text
+        }
+
+        val lines = mutableListOf<StringBuilder>()
+        lines.add(StringBuilder())  // 第1行：分子
+        lines.add(StringBuilder())  // 第2行：分数线
+        lines.add(StringBuilder())  // 第3行：分母
+
+        var lastEnd = 0
+
+        for (fraction in fractions) {
+            // 添加分数前的部分
+            val beforeText = if (fraction.startIndex > lastEnd) {
+                text.substring(lastEnd, fraction.startIndex)
+            } else {
+                ""
+            }
+
+            // ✅ 每个分数都计算自己的前缀长度
+            val currentPrefixLength = lines[1].length + beforeText.length
+
+            // 第2行：添加前缀
+            lines[1].append(beforeText)
+
+            // 计算分数宽度
+            val numLen = fraction.numerator.length
+            val denLen = fraction.denominator.length
+            val maxLen = max(numLen, denLen)
+
+            // 分子居中
+            val numPadding = (maxLen - numLen) / 2
+            lines[0].append(" ".repeat(currentPrefixLength + numPadding))
+            lines[0].append(fraction.numerator)
+
+            // 分数线
+            lines[1].append("─".repeat(maxLen))
+
+            // 分母居中
+            val denPadding = (maxLen - denLen) / 2
+            lines[2].append(" ".repeat(currentPrefixLength + denPadding))
+            lines[2].append(fraction.denominator)
+
+            lastEnd = fraction.endIndex
+        }
+
+        // 添加最后一部分
+        if (lastEnd < text.length) {
+            val afterText = text.substring(lastEnd)
+            lines[0].append(afterText)
+            lines[1].append(" ".repeat(afterText.length))
+            lines[2].append(" ".repeat(afterText.length))
+        }
+
+        // 合并三行，去除每行尾部的空格
+        val trimmedLines = lines.map { it.toString().trimEnd() }
+        return trimmedLines.joinToString("\n")
+    }
 }
 
 /**
@@ -1171,5 +1277,6 @@ class MathFormatter {
  */
 data class FormattedResult(
     val plainText: String,
-    val displayText: SpannableString
+    val displayText: SpannableString,
+    val exportText: String  // ✅ 用于导出的纯文本版本（带分数线）
 )

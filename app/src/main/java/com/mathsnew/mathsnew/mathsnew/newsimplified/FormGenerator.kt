@@ -3,6 +3,8 @@
 // 功能：生成因式分解、展开式、标准型等多种形式
 // ✅ 修复：增强公因子提取，支持函数幂次预合并
 // ✅ 修复：添加分式分子公因子提取
+// ✅ 新增：exp 约分功能（重写版，使用因子展平策略）
+// ✅ 修复：先因式分解再约分
 
 package com.mathsnew.mathsnew.newsimplified
 
@@ -30,6 +32,8 @@ class FormGenerator {
      * 生成多种形式的表达式（用于 ExpressionSimplifierV2）
      *
      * ✅ 修改：添加分式处理，对分子提取公因子
+     * ✅ 新增：exp 约分（递归）
+     * ✅ 修复：先因式分解再约分
      *
      * @param node 输入节点
      * @return SimplificationFormsV2 对象
@@ -45,30 +49,55 @@ class FormGenerator {
 
         // ✅ 新增：分式处理
         if (node is MathNode.BinaryOp && node.operator == Operator.DIVIDE) {
-            Log.d(TAG, "检测到分式，尝试提取分子公因子")
+            Log.d(TAG, "检测到分式")
 
-            val numerator = node.left
-            val denominator = node.right
-
-            // 尝试提取分子的公因子
-            try {
-                val numeratorFactored = extractCommonFactor(numerator)
-                if (numeratorFactored.toString() != numerator.toString()) {
-                    val factoredFraction = MathNode.BinaryOp(
-                        Operator.DIVIDE,
-                        numeratorFactored,
-                        denominator
-                    )
-                    Log.d(TAG, "✅ 分子因式分解成功: $factoredFraction")
-                    forms.add(SimplifiedForm(factoredFraction, SimplificationType.FACTORED, "分子因式分解"))
-                } else {
-                    Log.d(TAG, "ℹ️ 分子无法进一步因式分解")
-                }
+            // ✅ 步骤1：先尝试提取分子公因子
+            val numeratorFactored = try {
+                extractCommonFactor(node.left)
             } catch (e: Exception) {
-                Log.e(TAG, "分子因式分解失败: ${e.message}")
+                Log.e(TAG, "提取分子公因子失败: ${e.message}")
+                node.left
             }
 
-            // 可以继续添加其他分式处理，如约分等
+            val factoredFraction = if (numeratorFactored.toString() != node.left.toString()) {
+                Log.d(TAG, "✅ 分子因式分解成功: $numeratorFactored")
+                MathNode.BinaryOp(Operator.DIVIDE, numeratorFactored, node.right)
+            } else {
+                Log.d(TAG, "ℹ️ 分子无法因式分解，使用原始分式")
+                node
+            }
+
+            // ✅ 步骤2：尝试 exp 约分（递归，直到无法继续约分）
+            var expSimplified: MathNode = simplifyExpInFraction(factoredFraction)
+            var lastSimplified: MathNode = factoredFraction
+            var iterations = 0
+            val maxIterations = 5  // 防止无限循环
+
+            // 递归约分，直到不再变化
+            while (expSimplified.toString() != lastSimplified.toString() && iterations < maxIterations) {
+                lastSimplified = expSimplified
+                expSimplified = simplifyExpInFraction(expSimplified)
+                iterations++
+                Log.d(TAG, "递归约分第 $iterations 次: $expSimplified")
+            }
+
+            if (expSimplified.toString() != node.toString()) {
+                Log.d(TAG, "✅ exp约分成功（共 $iterations 次）: $expSimplified")
+
+                // 如果有因式分解，添加因式分解形式
+                if (factoredFraction.toString() != node.toString()) {
+                    forms.add(SimplifiedForm(factoredFraction, SimplificationType.FACTORED, "分子因式分解"))
+                }
+
+                // 添加约分后的形式
+                forms.add(SimplifiedForm(expSimplified, SimplificationType.FACTORED, "exp约分"))
+            } else if (factoredFraction.toString() != node.toString()) {
+                // 只有因式分解，没有约分
+                Log.d(TAG, "✅ 仅分子因式分解，无exp约分")
+                forms.add(SimplifiedForm(factoredFraction, SimplificationType.FACTORED, "分子因式分解"))
+            } else {
+                Log.d(TAG, "ℹ️ 无法进行因式分解或约分")
+            }
         } else {
             // 非分式，尝试整体因式分解
             try {
@@ -594,5 +623,202 @@ class FormGenerator {
             result = MathNode.BinaryOp(Operator.MULTIPLY, result, factors[i])
         }
         return result
+    }
+
+    /**
+     * ✅ 重写：简化分式中的 exp（使用因子展平策略）
+     *
+     * 策略：
+     * 1. 将分子和分母展平为因子列表
+     * 2. 识别所有 exp 因子及其指数
+     * 3. 约分公共的 exp
+     * 4. 重新构建分式
+     *
+     * 示例：
+     * exp(x)·(cos(x)-sin(x)) / exp(x)²
+     * → 因子：[exp(x), (cos(x)-sin(x))] / [exp(x)²]
+     * → 约分：exp(x)¹ / exp(x)² = 1 / exp(x)
+     * → 结果：(cos(x)-sin(x)) / exp(x)
+     */
+    private fun simplifyExpInFraction(node: MathNode): MathNode {
+        if (node !is MathNode.BinaryOp || node.operator != Operator.DIVIDE) {
+            return node
+        }
+
+        Log.d(TAG, "========== simplifyExpInFraction (重写版) ==========")
+        Log.d(TAG, "输入分式: $node")
+
+        // 1. 展平分子和分母为因子列表
+        val numeratorFactors = flattenToFactors(node.left)
+        val denominatorFactors = flattenToFactors(node.right)
+
+        Log.d(TAG, "分子因子数: ${numeratorFactors.size}")
+        Log.d(TAG, "分母因子数: ${denominatorFactors.size}")
+
+        // ✅ 添加调试日志
+        Log.d(TAG, "分子因子详情:")
+        numeratorFactors.forEachIndexed { i, f ->
+            Log.d(TAG, "  因子$i: $f (类型=${f.javaClass.simpleName})")
+        }
+
+        Log.d(TAG, "分母因子详情:")
+        denominatorFactors.forEachIndexed { i, f ->
+            Log.d(TAG, "  因子$i: $f (类型=${f.javaClass.simpleName})")
+        }
+
+        // 2. 统计 exp 因子
+        val numeratorExpMap = mutableMapOf<FunctionKey, Double>()
+        val numeratorNonExpFactors = mutableListOf<MathNode>()
+
+        for (factor in numeratorFactors) {
+            val (expKey, exp) = getExpInfo(factor)
+            if (expKey != null) {
+                numeratorExpMap[expKey] = (numeratorExpMap[expKey] ?: 0.0) + exp
+                Log.d(TAG, "分子exp: ${expKey.toCanonicalString()}, 指数=$exp")
+            } else {
+                numeratorNonExpFactors.add(factor)
+            }
+        }
+
+        val denominatorExpMap = mutableMapOf<FunctionKey, Double>()
+        val denominatorNonExpFactors = mutableListOf<MathNode>()
+
+        for (factor in denominatorFactors) {
+            val (expKey, exp) = getExpInfo(factor)
+            if (expKey != null) {
+                denominatorExpMap[expKey] = (denominatorExpMap[expKey] ?: 0.0) + exp
+                Log.d(TAG, "分母exp: ${expKey.toCanonicalString()}, 指数=$exp")
+            } else {
+                denominatorNonExpFactors.add(factor)
+            }
+        }
+
+        // 3. 找到公共的 exp 参数
+        val commonExpArgs = numeratorExpMap.keys.intersect(denominatorExpMap.keys)
+
+        if (commonExpArgs.isEmpty()) {
+            Log.d(TAG, "没有公共exp，无需约分")
+            return node
+        }
+
+        Log.d(TAG, "找到 ${commonExpArgs.size} 个可约分的exp")
+
+        // 4. 计算约分后的指数
+        val finalNumeratorExpMap = numeratorExpMap.toMutableMap()
+        val finalDenominatorExpMap = denominatorExpMap.toMutableMap()
+
+        for (expKey in commonExpArgs) {
+            val numExp = numeratorExpMap[expKey]!!
+            val denExp = denominatorExpMap[expKey]!!
+
+            Log.d(TAG, "约分 exp(${expKey.argument}): 分子=$numExp, 分母=$denExp")
+
+            val diff = numExp - denExp
+
+            if (abs(diff) < EPSILON) {
+                // 完全约掉
+                finalNumeratorExpMap.remove(expKey)
+                finalDenominatorExpMap.remove(expKey)
+                Log.d(TAG, "  → 完全约掉")
+            } else if (diff > 0) {
+                // 分子剩余
+                finalNumeratorExpMap[expKey] = diff
+                finalDenominatorExpMap.remove(expKey)
+                Log.d(TAG, "  → 分子剩余: $diff")
+            } else {
+                // 分母剩余
+                finalNumeratorExpMap.remove(expKey)
+                finalDenominatorExpMap[expKey] = -diff
+                Log.d(TAG, "  → 分母剩余: ${-diff}")
+            }
+        }
+
+        // 5. 重新构建分子和分母
+        val newNumeratorFactors = numeratorNonExpFactors + buildExpFactors(finalNumeratorExpMap)
+        val newDenominatorFactors = denominatorNonExpFactors + buildExpFactors(finalDenominatorExpMap)
+
+        val newNumerator = if (newNumeratorFactors.isEmpty()) {
+            MathNode.Number(1)
+        } else {
+            buildProduct(newNumeratorFactors)
+        }
+
+        val newDenominator = if (newDenominatorFactors.isEmpty()) {
+            MathNode.Number(1)
+        } else {
+            buildProduct(newDenominatorFactors)
+        }
+
+        Log.d(TAG, "约分后分子: $newNumerator")
+        Log.d(TAG, "约分后分母: $newDenominator")
+
+        return MathNode.BinaryOp(Operator.DIVIDE, newNumerator, newDenominator)
+    }
+
+    /**
+     * 将表达式展平为因子列表（只处理乘法）
+     */
+    private fun flattenToFactors(node: MathNode): List<MathNode> {
+        return when (node) {
+            is MathNode.BinaryOp -> {
+                if (node.operator == Operator.MULTIPLY) {
+                    flattenToFactors(node.left) + flattenToFactors(node.right)
+                } else {
+                    listOf(node)
+                }
+            }
+            else -> listOf(node)
+        }
+    }
+
+    /**
+     * 获取因子的 exp 信息
+     *
+     * @return Pair(FunctionKey?, 指数)
+     *   - 如果是 exp 因子，返回 (key, 指数)
+     *   - 否则返回 (null, 0.0)
+     */
+    private fun getExpInfo(factor: MathNode): Pair<FunctionKey?, Double> {
+        return when (factor) {
+            // exp(x)
+            is MathNode.Function -> {
+                if (factor.name == "exp") {
+                    Pair(FunctionKey.from(factor), 1.0)
+                } else {
+                    Pair(null, 0.0)
+                }
+            }
+
+            // exp(x)^n
+            is MathNode.BinaryOp -> {
+                if (factor.operator == Operator.POWER &&
+                    factor.left is MathNode.Function &&
+                    (factor.left as MathNode.Function).name == "exp" &&
+                    factor.right is MathNode.Number) {
+
+                    val key = FunctionKey.from(factor.left as MathNode.Function)
+                    val exp = (factor.right as MathNode.Number).value
+                    Pair(key, exp)
+                } else {
+                    Pair(null, 0.0)
+                }
+            }
+
+            else -> Pair(null, 0.0)
+        }
+    }
+
+    /**
+     * 从 exp Map 构建因子列表
+     */
+    private fun buildExpFactors(expMap: Map<FunctionKey, Double>): List<MathNode> {
+        return expMap.map { (key, exp) ->
+            val expFunc = key.toFunctionNode()
+            if (abs(exp - 1.0) < EPSILON) {
+                expFunc
+            } else {
+                MathNode.BinaryOp(Operator.POWER, expFunc, MathNode.Number(exp))
+            }
+        }
     }
 }

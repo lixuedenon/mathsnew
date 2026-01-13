@@ -1,5 +1,5 @@
 // app/src/main/java/com/mathsnew/mathsnew/MathNode.kt
-// AST节点定义（调试版 - 带详细日志）
+// AST节点定义（修复 +-1 负号问题）
 
 package com.mathsnew.mathsnew
 
@@ -8,12 +8,10 @@ import kotlin.math.abs
 
 sealed class MathNode {
     data class Number(val value: Double) : MathNode() {
-        // ✅ 次构造函数：接受Int
         constructor(value: Int) : this(value.toDouble()) {
             Log.d("MathNode.Number", "📊 创建(Int构造): value=$value → ${value.toDouble()}")
         }
 
-        // ✅ 主构造函数会自动调用（data class特性）
         init {
             Log.d("MathNode.Number", "📊 创建(主构造): value=$value")
         }
@@ -25,7 +23,6 @@ sealed class MathNode {
                 value.toString()
             }
 
-            // 🔍 关键日志：追踪哪些数字被格式化
             if (result.contains(".")) {
                 Log.e("MathNode.Number", "⚠️ toString产生小数: value=$value → result='$result'")
             } else if (value.toString().contains(".")) {
@@ -46,6 +43,7 @@ sealed class MathNode {
         val right: MathNode
     ) : MathNode() {
         override fun toString(): String {
+            // ✅ 处理 -1× 的情况
             if (operator == Operator.MULTIPLY) {
                 if (left is Number && abs(left.value + 1.0) < 1e-10) {
                     return "-${formatChild(right, isLeft = false)}"
@@ -61,9 +59,16 @@ sealed class MathNode {
 
             return when (operator) {
                 Operator.ADD -> {
-                    // ✅ 优化：处理 +- 情况
                     when {
-                        // 右边是负数：a+(-b) → a-b
+                        // ✅ 右边是 -1×expr：a+(-1×b) → a-b
+                        right is BinaryOp &&
+                        right.operator == Operator.MULTIPLY &&
+                        right.left is Number &&
+                        abs(right.left.value + 1.0) < 1e-10 -> {
+                            val innerRight = formatChild(right.right, isLeft = false)
+                            "$leftStr-$innerRight"
+                        }
+                        // 右边是负数：a+(-5) → a-5
                         right is Number && right.value < 0 -> {
                             "$leftStr-${abs(right.value)}"
                         }
@@ -83,12 +88,12 @@ sealed class MathNode {
                         left is Number && abs(left.value) < 1e-10 -> {
                             if (right is BinaryOp && (right.operator == Operator.ADD ||
                                 right.operator == Operator.SUBTRACT)) {
-                                "-($rightStr)"  // 0-(a+b) → -(a+b)
+                                "-($rightStr)"
                             } else {
-                                "-$rightStr"  // 0-a → -a
+                                "-$rightStr"
                             }
                         }
-                        // 右边是负数：a-(-b) → a+b
+                        // 右边是负数：a-(-5) → a+5
                         right is Number && right.value < 0 -> {
                             "$leftStr+${abs(right.value)}"
                         }
